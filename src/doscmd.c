@@ -95,6 +95,7 @@ struct fastloader_rxtx_s {
 };
 
 static const PROGMEM struct fastloader_rxtx_s fl_rxtx_table[] = {
+  [RXTX_NONE]          = { NULL, NULL }, // prevents compile error when all fastloaders are disabled
 #ifdef CONFIG_LOADER_GEOS
   [RXTX_GEOS_1MHZ]     = { geos_get_byte_1mhz,     geos_send_byte_1mhz     },
   [RXTX_GEOS_2MHZ]     = { geos_get_byte_2mhz,     geos_send_byte_2mhz     },
