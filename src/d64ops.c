@@ -1663,15 +1663,34 @@ static uint8_t d64_delete(path_t *path, cbmdirent_t *dent) {
 static void d64_read_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector) {
   d64_lastread.track = track;
   d64_lastread.sector = sector;
-  checked_read(part, track, sector, buf->data, 256, ERROR_ILLEGAL_TS_COMMAND);
+  if (bam_buffer_match(bam_buffer, part, track, sector)) {
+    memcpy(buf->data, bam_buffer->data, 256);
+  }
+  else if (bam_buffer2 && bam_buffer_match(bam_buffer2, part, track, sector)) {
+    memcpy(buf->data, bam_buffer2->data, 256);
+  }
+  else {
+    checked_read(part, track, sector, buf->data, 256, ERROR_ILLEGAL_TS_COMMAND);
+  }
 }
 
 static void d64_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector) {
   if (track < 1 || track > get_param(part, LAST_TRACK) ||
       sector >= d64_sectors_per_track(part, track)) {
     set_error_ts(ERROR_ILLEGAL_TS_COMMAND,track,sector);
-  } else
-    image_write(part, sector_offset(part,track,sector), buf->data, 256, 1);
+  } else {
+    if (bam_buffer_match(bam_buffer, part, track, sector)) {
+      memcpy(bam_buffer->data, buf->data, 256);
+      bam_buffer->mustflush = 1;
+    }
+    else if (bam_buffer2 && bam_buffer_match(bam_buffer2, part, track, sector)) {
+      memcpy(bam_buffer2->data, buf->data, 256);
+      bam_buffer2->mustflush = 1;
+    }
+    else {
+      image_write(part, sector_offset(part,track,sector), buf->data, 256, 1);
+    }
+  }
 }
 
 static void d64_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
