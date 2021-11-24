@@ -346,11 +346,10 @@ static void eefs_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_
   set_error_ts(ERROR_READ_NOHEADER, track, sector);
 }
 
-static void eefs_format(uint8_t drv, uint8_t *name, uint8_t *id) {
-  (void)drv;
+static void eefs_format(path_t *path, uint8_t *name, uint8_t *id) {
+  (void)path;
   (void)name;
   (void)id;
-
   eepromfs_format();
 }
 
