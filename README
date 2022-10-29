@@ -222,6 +222,9 @@ Supported commands:
   is the root directory of the DNP image.
 
   If an image is mounted, it will be formatted.
+  
+  If the id is followed by a plus or minus sign, fast format is turned on
+  resp. off.
 
   If no image is mounted and 1. the "name" part of the command includes a
   known D64 file extension (.D64/.D41/.D71/.D81) and 2. no file with that
@@ -229,6 +232,8 @@ Supported commands:
   for .D64) is created. The disk label is derived from the filename by
   removing the extension. As this is a full format, it requires an id to
   be present in the command string.
+  In case that the extension is .DNP, the is is treated as a three digit
+  value number of tracks and the image is created but not formatted.
 
   If an image file with that name already exists, it is formatted, like
   if it was mounted.
@@ -241,7 +246,7 @@ Supported commands:
 
   Path specifiers are supported, so "N//SUBDIR:D64TEST.D64,XX" will
   create the image in the directory "/SUBDIR".
-
+  
 - R
   Renaming files should work the same as it does on CMD drives, although
   the errors flagged for invalid characters in the name may differ.
@@ -362,6 +367,9 @@ Supported commands:
              However, due to limitations of the current implementation of
              the CD command such software may still fail to mount a disk
              image with this option enabled.
+
+  - XN+/XN-  Enable/disable fast format. In fast format mode, only the directory
+             track of an image is wiped during format.
 
   - X*+/X*-  Enable/disable 1581-style * matching. If enabled, characters
              after a * will be matched against the end of the file name.

@@ -2158,6 +2158,18 @@ static void parse_xcommand(void) {
     }
     break;
 
+  case 'N':
+    /* Change fast format mode */
+    str = command_buffer+2;
+    if (*str == '+') {
+      globalflags |= FASTFORMAT;
+    } else if (*str == '-') {
+      globalflags &= (uint8_t)~FASTFORMAT;
+    } else {
+      set_error(ERROR_SYNTAX_UNKNOWN);
+    }
+    break;
+
   case 'W':
     /* Write configuration */
     write_configuration();

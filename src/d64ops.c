@@ -37,6 +37,7 @@
 #include "ustring.h"
 #include "wrapops.h"
 #include "d64ops.h"
+#include "flags.h"
 
 #define D41_SIZE_MIN      D41_SIZE
 /* Max 7 additional tracks with 17 256 byte sectors each + 802 error bytes */
@@ -2247,10 +2248,17 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
 
   if (id != NULL) {
     /* Clear the data area of the disk image */
-    for (t=1; t<=get_param(part, LAST_TRACK); t++) {
-      if (d64_format_track(part, buf, t))
-        return;
-    }
+    int fastformat = globalflags & FASTFORMAT;
+    if (id[2] == '-') fastformat = 0;
+    if (id[2] == '+') fastformat = 1;
+    if (!fastformat)
+       for (t=1; t<=get_param(part, LAST_TRACK); t++) {
+         if (d64_format_track(part, buf, t))
+           return;
+       }
+    else
+      if (d64_format_track(part, buf, get_param(part, DIR_TRACK)))
+         return;
 
     /* Copy the new ID into the buffer */
     idbuf[0] = id[0];
