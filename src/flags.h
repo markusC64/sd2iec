@@ -44,6 +44,7 @@ extern uint8_t globalflags;
 /* 1<<1 was JIFFY_ENABLED */
 #define EXTENSION_HIDING (1<<3)
 #define POSTMATCH        (1<<4)
+#define FASTFORMAT       (1<<6)
 
 /* Disk image-as-directory mode, defined in fileops.c */
 extern uint8_t image_as_dir;
