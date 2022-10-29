@@ -1709,11 +1709,6 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
   uint8_t  *ext;
   uint32_t fsize;
 
-  if (id != NULL && ustrlen(id) != 2) {
-    set_error(ERROR_SYNTAX_UNKNOWN);
-    return;
-  }
-
   /* derive filename from name given to NEW: and store it in ops_scratch */
   ustrcpy(ops_scratch, name);
 
@@ -1731,6 +1726,16 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     ustrcpy(ext, ".d64");
     imagetype = IMG_IS_D41;
     ext = NULL;
+  }
+
+  if (id != NULL && ustrlen(id) != 2 && ustrlen(id) != 3 && imagetype != IMG_IS_DNP) {
+    set_error(ERROR_SYNTAX_UNKNOWN);
+    return;
+  }
+
+  if (id != NULL && imagetype == IMG_IS_DNP && ustrlen(id) != 3) {
+    set_error(ERROR_SYNTAX_UNKNOWN);
+    return;
   }
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
@@ -1757,6 +1762,10 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
       case IMG_IS_D81:
         fsize = D81_SIZE;
         break;
+      case IMG_IS_DNP:
+        if (id != 0) fsize = 65536 * (100*(id[0]-'0') + 10*(id[1]-'0') + (id[2]-'0'));
+        else fsize = 0;
+        break;
       default:
         fsize = 0;
         break;
@@ -1776,11 +1785,12 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
                  &partition[path->part].imagehandle,
                  ops_scratch, FA_CREATE_NEW|FA_READ|FA_WRITE);
 
-    if (res == FR_OK)
+    if (res == FR_OK) {
       res = f_lseek(&partition[path->part].imagehandle, fsize);
+    }
   } else if (res == FR_OK) { // image file exists
     /* Don't overwrite the image if the extension was auto-appended */
-    if (ext == NULL) {
+    if (ext == NULL || imagetype == IMG_IS_DNP) {
       f_close(&partition[path->part].imagehandle);
       set_error(ERROR_FILE_EXISTS);
       return;
@@ -1789,6 +1799,11 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
 
   if (res != FR_OK) {
     parse_error(res,1);
+    return;
+  }
+
+  if (imagetype == IMG_IS_DNP) {
+    f_close(&partition[path->part].imagehandle);
     return;
   }
 
