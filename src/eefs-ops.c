@@ -412,6 +412,12 @@ static void eefs_rename(path_t *path, cbmdirent_t *oldname, uint8_t *newname) {
   translate_error(res);
 }
 
+static void eefs_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
+{
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+
+
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
 /* ------------------------------------------------------------------------- */
@@ -432,5 +438,6 @@ const PROGMEM fileops_t eefs_ops = {
   eefs_readdir,
   image_mkdir,
   eefs_chdir,
-  eefs_rename
+  eefs_rename,
+  eefs_set_attrib
 };
