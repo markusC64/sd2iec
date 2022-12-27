@@ -1811,6 +1811,31 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
   image_unmount(path->part);
 }
 
+static void fat_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
+{
+  FRESULT res;
+  uint8_t *name;
+  uint8_t attrib = 0;
+  if (attr & FLAG_HIDDEN) attrib |= AM_HID;
+  if (attr & FLAG_RO) attrib |= AM_RDO;
+  if (attr & 0x10) attrib |= AM_ARC;
+
+  set_dirty_led(1);
+  if (dent->pvt.fat.realname[0]) {
+    name = dent->pvt.fat.realname;
+    p00cache_invalidate();
+  } else {
+    name = dent->name;
+    pet2asc(name);
+  }
+  partition[path->part].fatfs.curr_dir = path->dir.fat;
+  res = f_chmod(&partition[path->part].fatfs, name, attrib, 3);
+
+  update_leds();
+
+  parse_error(res,0);
+}
+
 const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consistent with d64ops and m2iops
   &fat_open_read,
   &fat_open_write,
@@ -1827,5 +1852,6 @@ const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consiste
   &fat_readdir,
   &fat_mkdir,
   &fat_chdir,
-  &fat_rename
+  &fat_rename,
+  &fat_set_attrib
 };
