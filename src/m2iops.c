@@ -439,6 +439,11 @@ static void format_dummy(path_t *path, uint8_t *name, uint8_t *id) {
   set_error(ERROR_SYNTAX_UNKNOWN);
 }
 
+static void m2i_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
+{
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+
 const PROGMEM fileops_t m2iops = {
   m2i_open_read,
   m2i_open_write,
@@ -455,5 +460,6 @@ const PROGMEM fileops_t m2iops = {
   m2i_readdir,
   image_mkdir,
   image_chdir,
-  m2i_rename
+  m2i_rename,
+  m2i_set_attrib
 };

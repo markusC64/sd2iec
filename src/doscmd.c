@@ -1690,6 +1690,146 @@ static void parse_rename(void) {
   rename(&oldpath, &dent, newname);
 }
 
+static void parse_lock(void) {
+  path_t path;
+  uint8_t *name;
+  cbmdirent_t dent;
+  uint8_t attr;
+
+  clean_cmdbuffer();
+
+  if (parse_path(command_buffer+1, &path, &name, 0))
+    return;
+
+  /* Clear the FNF */
+  set_error(ERROR_OK);
+
+  /* Check if the old name exists */
+  if (first_match(&path, name, FLAG_HIDDEN, &dent))
+    return;
+
+  attr = dent.typeflags ^ FLAG_RO;
+
+  set_attrib(&path, &dent, attr);
+}
+
+static void parse_elock(void) {
+  cbmdirent_t dent;
+  int8_t  res;
+  uint8_t *filename,*tmp,*name;
+  path_t  path;
+  uint8_t attr;
+
+  clean_cmdbuffer();
+
+  filename = ustr1tok(command_buffer+2,',',&tmp);
+
+  set_dirty_led(1);
+  /* Loop over all file names */
+  set_error(ERROR_OK);
+  while (filename != NULL) {
+    parse_path(filename, &path, &name, 0);
+
+    if (opendir(&matchdh, &path))
+      return;
+
+    while (1) {
+      res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
+      if (res < 0)
+        break;
+      if (res > 0)
+        return;
+
+      /* Skip directories */
+      if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
+        continue;
+      attr = dent.typeflags | FLAG_RO;
+      set_attrib(&path, &dent, attr);
+    }
+
+    filename = ustr1tok(NULL,',',&tmp);
+  }
+}
+
+static void parse_eunlock(void) {
+  cbmdirent_t dent;
+  int8_t  res;
+  uint8_t *filename,*tmp,*name;
+  path_t  path;
+  uint8_t attr;
+
+  clean_cmdbuffer();
+
+  filename = ustr1tok(command_buffer+2,',',&tmp);
+
+  set_dirty_led(1);
+  /* Loop over all file names */
+  while (filename != NULL) {
+    parse_path(filename, &path, &name, 0);
+
+    if (opendir(&matchdh, &path))
+      return;
+
+    while (1) {
+      res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
+      if (res < 0)
+        break;
+      if (res > 0)
+        return;
+
+      /* Skip directories */
+      if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
+        continue;
+      attr = dent.typeflags & ~FLAG_RO;
+      set_attrib(&path, &dent, attr);
+    }
+
+    filename = ustr1tok(NULL,',',&tmp);
+  }
+}
+
+
+static void parse_attr(void) {
+  path_t path;
+  uint8_t *name;
+  cbmdirent_t dent;
+  uint8_t attr;
+  unsigned char *p;
+
+  clean_cmdbuffer();
+
+  /* Find the boundary between the names */
+  name = ustrchr(command_buffer,'=');
+  if (name == NULL) {
+    set_error(ERROR_SYNTAX_UNKNOWN);
+    return;
+  }
+  *name++ = 0;
+  attr = 0;
+  
+  p=command_buffer+2;
+  while (*p)
+  {
+     if (*p == 'H') attr |= FLAG_HIDDEN;
+     if (*p == 'R') attr |= FLAG_RO;
+     if (*p == 'A') attr |= 0x10;
+     ++p;
+  }
+
+  if (parse_path(name, &path, &name, 0))
+    return;
+
+  /* Clear the FNF */
+  set_error(ERROR_OK);
+
+  /* Check if the old name exists */
+  if (first_match(&path, name, FLAG_HIDDEN, &dent))
+    return;
+
+  set_attrib(&path, &dent, attr);
+}
+
+
 
 /* ------------- */
 /*  S - Scratch  */
@@ -2246,6 +2386,23 @@ static void parse_xcommand(void) {
   }
 }
 
+static void parse_ecommand(void) {
+  clean_cmdbuffer();
+
+  switch (command_buffer[1]) {
+  case 'L':
+    parse_elock();
+    break;
+
+  case 'U':
+    parse_eunlock();
+    break;
+
+  default:
+    set_error(ERROR_SYNTAX_UNKNOWN);
+    break;
+  }
+}
 
 /* ------------------------------------------------------------------------- */
 /*  Main command parser function                                             */
@@ -2290,6 +2447,11 @@ void parse_doscommand(void) {
   }
 
   switch (command_buffer[0]) {
+  case 'A':
+    /* set attribute */
+      parse_attr();
+    break;
+
   case 'B':
     /* Block-Something */
     parse_block();
@@ -2309,6 +2471,10 @@ void parse_doscommand(void) {
     parse_direct();
     break;
 
+  case 'E':
+    parse_ecommand();
+    break;
+
   case 'G':
     /* Get-Partition */
     parse_getpartition();
@@ -2317,6 +2483,11 @@ void parse_doscommand(void) {
   case 'I':
     /* Initialize */
     parse_initialize();
+    break;
+
+  case 'L':
+    /* set attribute */
+      parse_lock();
     break;
 
   case 'M':

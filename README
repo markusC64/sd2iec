@@ -73,6 +73,18 @@ Supported commands:
   ($=P:S*). All partitions are listed with type "FAT", although this could
   change to "NAT" later for compatibility.
 
+- A:
+  Sets attributes on a file.
+  A:=foo   removes all attributes 
+  A:R=foo  sets attribute Readonly, removes any other
+  A:H=foo  sets attribute hidden, removes any other
+
+- L/EL/EU:
+  Sets resp. clears reqad only flag 
+  L:foo    toggles flag on a single file 
+  EL:foo   sets flag on files
+  EU:foo   clears flag on files
+
 - CD/MD/RD:
   Subdirectory access is compatible to the syntax used by the CMD drives,
   although drive/partition numbers are completely ignored.
