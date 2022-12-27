@@ -2284,6 +2284,21 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
   partition[part].d64data.format_function(part, buf, name, idbuf);
 }
 
+static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
+{
+  uint8_t *ptr;
+
+  /* Read the directory entry of the file */
+  if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
+    return;
+
+  ptr = ops_scratch + DIR_OFS_FILE_TYPE;
+  *ptr = (*ptr & 0x8F) | attr;
+
+  write_entry(path->part, &dent->pvt.dxx.dh, ops_scratch, 1);
+
+}
+
 
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
@@ -2305,5 +2320,6 @@ const PROGMEM fileops_t d64ops = {
   d64_readdir,
   d64_mkdir,
   d64_chdir,
-  d64_rename
+  d64_rename,
+  d64_set_attrib
 };
