@@ -417,6 +417,11 @@ static void eefs_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+static void eefs_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
+{
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+
 
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
@@ -439,5 +444,6 @@ const PROGMEM fileops_t eefs_ops = {
   image_mkdir,
   eefs_chdir,
   eefs_rename,
-  eefs_set_attrib
+  eefs_set_attrib,
+  eefs_set_headername
 };

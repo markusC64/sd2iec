@@ -42,6 +42,7 @@ extern uint8_t globalflags;
 
 /* permanent (EEPROM-saved) flags */
 /* 1<<1 was JIFFY_ENABLED */
+#define D64_WITH_HIDDEN  (1<<1)
 #define EXTENSION_HIDING (1<<3)
 #define POSTMATCH        (1<<4)
 #define FASTFORMAT       (1<<6)

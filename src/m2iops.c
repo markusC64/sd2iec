@@ -450,6 +450,11 @@ static void m2i_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+static void m2i_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
+{
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+
 const PROGMEM fileops_t m2iops = {
   m2i_open_read,
   m2i_open_write,
@@ -467,5 +472,6 @@ const PROGMEM fileops_t m2iops = {
   image_mkdir,
   image_chdir,
   m2i_rename,
-  m2i_set_attrib
+  m2i_set_attrib,
+  m2i_set_headername
 };

@@ -77,6 +77,7 @@ typedef struct fileops_s {
   uint8_t  (*chdir)(path_t *path, cbmdirent_t *dent);
   void     (*rename)(path_t *path, cbmdirent_t *oldname, uint8_t *newname);
   void     (*set_attrib)(path_t *path, cbmdirent_t *name, uint8_t attr);
+  void     (*set_headername)(path_t *path, uint8_t *newname, uint8_t *newid);
 } fileops_t;
 
 /* Helper-Define to avoid lots of typedefs */
@@ -105,5 +106,6 @@ typedef struct fileops_s {
 #define chdir(path,dent) ((pgmcall(partition[(path)->part].fop->chdir))(path,dent))
 #define rename(path,old,new) ((pgmcall(partition[(path)->part].fop->rename))(path,old,new))
 #define set_attrib(path,name,attr) ((pgmcall(partition[(path)->part].fop->set_attrib))(path,name,attr))
+#define set_headername(path,name,id) ((pgmcall(partition[(path)->part].fop->set_headername))(path,name,id))
 
 #endif
