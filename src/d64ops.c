@@ -1375,11 +1375,9 @@ static int8_t d64_readdir(dh_t *dh, cbmdirent_t *dent) {
   memset(dent, 0, sizeof(cbmdirent_t));
 
   dent->opstype = OPSTYPE_DXX;
-  dent->typeflags = (ops_scratch[DIR_OFS_FILE_TYPE] ^ FLAG_SPLAT)
-    & ~FLAG_HIDDEN;
-  /* Treat entries with type == 0 as hidden */
-  if (dent->typeflags == 0)
-    dent->typeflags = FLAG_HIDDEN;
+  dent->typeflags = (ops_scratch[DIR_OFS_FILE_TYPE] ^ FLAG_SPLAT);
+  if (!(globalflags & D64_WITH_HIDDEN))
+    dent->typeflags &= ~FLAG_HIDDEN;
 
   if ((dent->typeflags & TYPE_MASK) > TYPE_DIR)
     /* Change invalid types to DEL */
@@ -2256,8 +2254,16 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
            return;
        }
     else
-      if (d64_format_track(part, buf, get_param(part, DIR_TRACK)))
+    {
+      if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
+          if (d64_format_track(part, buf, 53))
+              return;
+
+       /* clear the entire directory track */
+       /* This is not accurate, but I do not care. */
+       if (d64_format_track(part, buf, get_param(part, DIR_TRACK)))
          return;
+    }
 
     /* Copy the new ID into the buffer */
     idbuf[0] = id[0];
@@ -2265,6 +2271,10 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
   } else {
     /* Read the old ID into the buffer */
     if (d64_getid(path, idbuf))
+      return;
+
+   if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
+    if (d64_format_track(part, buf, 53))
       return;
 
     /* clear the entire directory track */
@@ -2299,6 +2309,36 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
 
 }
 
+static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
+{
+   buffer_t *buffer = alloc_buffer();
+   uint8_t sector;
+   
+   if (partition[path->part].imagetype == D64_TYPE_DNP)
+     sector = path->dir.dxx.sector;
+   else
+     sector = 0;
+
+  if (image_read(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256))
+  {
+      cleanup_and_free_buffer(buffer);
+      return;
+   }
+  
+   int offset = get_param(path->part, LABEL_OFFSET);
+   
+   memset(buffer->data + offset, 0xa0, 16);
+   memcpy(buffer->data + offset, newname, ustrlen(newname));
+   
+   if (newid) {
+      memset(buffer->data + offset + 18, 0x20, 2);
+      memcpy(buffer->data + offset + 18, newid, ustrlen(newid));
+   }
+
+  image_write(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256, 1);
+   cleanup_and_free_buffer(buffer);
+}
+
 
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
@@ -2321,5 +2361,6 @@ const PROGMEM fileops_t d64ops = {
   d64_mkdir,
   d64_chdir,
   d64_rename,
-  d64_set_attrib
+  d64_set_attrib,
+  d64_set_headername
 };

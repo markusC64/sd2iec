@@ -1,5 +1,5 @@
 /* sd2iec - SD/MMC to Commodore serial bus interface/controller
-   Copyright (C) 2007-2022  Ingo Korb <ingo@akana.de>
+   Copyright (C) 2007-2017  Ingo Korb <ingo@akana.de>
 
    Inspired by MMC2IEC by Lars Pontoppidan et al.
 
@@ -1713,6 +1713,63 @@ static void parse_lock(void) {
   set_attrib(&path, &dent, attr);
 }
 
+static void parse_set_header(int off) {
+  path_t path;
+  uint8_t *name, *id;
+
+  clean_cmdbuffer();
+
+  if (parse_path(command_buffer+off, &path, &name, 0))
+    return;
+  id = ustrchr(name, ',');
+  if (id != NULL) {
+    *id = 0;
+    id++;
+  }
+  if (name[0] == '\0') {
+    set_error(ERROR_SYNTAX_NONAME);
+    return;
+  }
+
+  if (ustrlen(name) > 16) {
+    set_error(ERROR_SYNTAX_NONAME);
+    return;
+  }
+
+  if (id) if (ustrlen(id) > 5) {
+    set_error(ERROR_SYNTAX_NONAME);
+    return;
+  }
+
+  /* Clear the FNF */
+  set_error(ERROR_OK);
+
+  set_headername(&path, name, id);
+}
+
+static void parse_ehide(void) {
+  path_t path;
+  uint8_t *name;
+  cbmdirent_t dent;
+  uint8_t attr;
+
+  clean_cmdbuffer();
+
+  if (parse_path(command_buffer+2, &path, &name, 0))
+    return;
+
+  /* Clear the FNF */
+  set_error(ERROR_OK);
+
+  /* Check if the old name exists */
+  if (first_match(&path, name, FLAG_HIDDEN, &dent))
+    return;
+
+  attr = dent.typeflags ^ FLAG_HIDDEN;;
+
+  set_attrib(&path, &dent, attr);
+}
+
 static void parse_elock(void) {
   cbmdirent_t dent;
   int8_t  res;
@@ -2374,6 +2431,26 @@ static void parse_xcommand(void) {
     break;
 #endif
 
+  case 'L':
+    parse_elock();
+    break;
+
+  case 'U':
+    parse_eunlock();
+    break;
+
+  case 'H':
+    if (!command_buffer[3])
+    {
+       str = command_buffer+2;
+       if (*str == '+')  globalflags |= D64_WITH_HIDDEN;
+       else if (*str == '-')  globalflags &= (uint8_t)~D64_WITH_HIDDEN;
+       else set_error(ERROR_SYNTAX_UNKNOWN);
+    }
+    else
+       parse_set_header(2);
+    break;
+
   default:
     if (command_length != 1)
       /* unknown command */
@@ -2390,6 +2467,17 @@ static void parse_ecommand(void) {
   clean_cmdbuffer();
 
   switch (command_buffer[1]) {
+  case 'H':
+    {
+       uint8_t *tmp = command_buffer+2;
+       parse_partition(&tmp); 
+       if  (*tmp == ':')
+          parse_set_header(2);
+       else
+          parse_ehide();
+       break;
+    }
+
   case 'L':
     parse_elock();
     break;
@@ -2468,7 +2556,10 @@ void parse_doscommand(void) {
 
   case 'D':
     /* Direct sector access (was duplicate in CBM drives) */
-    parse_direct();
+    if (command_buffer[1] == ':')
+       parse_set_header(1);
+    else
+       parse_direct();
     break;
 
   case 'E':
@@ -2506,6 +2597,11 @@ void parse_doscommand(void) {
     break;
 
   case 'R':
+    if(command_length > 2 && command_buffer[1] == '-') {
+      /* Rename Header */
+      parse_set_header(3);
+      break;
+    }
     /* Rename */
     parse_rename();
     break;
@@ -2520,11 +2616,14 @@ void parse_doscommand(void) {
     parse_scratch();
     break;
 
-#ifdef HAVE_RTC
   case 'T':
-    parse_time();
-    break;
+#ifdef HAVE_RTC
+     if (command_length > 1 && command_buffer[1] == '-')
+         parse_time();
+      else
 #endif
+         parse_lock();
+    break;
 
   case 'U':
     parse_user();

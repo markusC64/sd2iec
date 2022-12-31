@@ -212,6 +212,10 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
       msg = appendbool(msg, 0, globalflags & FASTFORMAT);
 
       *msg++ = ':';
+      *msg++ = 'H';
+      msg = appendbool(msg, 0, globalflags & D64_WITH_HIDDEN);
+
+      *msg++ = ':';
       *msg++ = 'R';
       ustrcpy(msg, rom_filename);
       msg += ustrlen(rom_filename);
