@@ -1836,6 +1836,11 @@ static void fat_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
   parse_error(res,0);
 }
 
+static void fat_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
+{
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+
 const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consistent with d64ops and m2iops
   &fat_open_read,
   &fat_open_write,
@@ -1853,5 +1858,6 @@ const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consiste
   &fat_mkdir,
   &fat_chdir,
   &fat_rename,
-  &fat_set_attrib
+  &fat_set_attrib,
+  &fat_set_headername
 };
