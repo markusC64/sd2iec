@@ -116,7 +116,7 @@ void read_configuration(void) {
   /* Read data from EEPROM */
   tmp = eeprom_read_byte(&storedconfig.global_flags);
   globalflags &= (uint8_t)~(POSTMATCH | FASTFORMAT |
-                            EXTENSION_HIDING);
+                            EXTENSION_HIDING | D64_WITH_HIDDEN);
   globalflags |= tmp;
 
   if (eeprom_read_byte(&storedconfig.hardaddress) == device_hw_address())
@@ -162,7 +162,7 @@ void write_configuration(void) {
   eeprom_write_word(&storedconfig.structsize, sizeof(storedconfig));
   eeprom_write_byte(&storedconfig.global_flags,
                     globalflags & (POSTMATCH | FASTFORMAT |
-                                   EXTENSION_HIDING));
+                                   EXTENSION_HIDING | D64_WITH_HIDDEN));
   eeprom_write_byte(&storedconfig.address, device_address);
   eeprom_write_byte(&storedconfig.hardaddress, device_hw_address());
   eeprom_write_byte(&storedconfig.fileexts, file_extension_mode);
