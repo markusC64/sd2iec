@@ -2256,6 +2256,17 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
          if (d64_format_track(part, buf, t))
            return;
        }
+    else
+    {
+      if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
+          if (d64_format_track(part, buf, 53))
+              return;
+
+       /* clear the entire directory track */
+       /* This is not accurate, but I do not care. */
+       if (d64_format_track(part, buf, get_param(part, DIR_TRACK)))
+         return;
+    }
 
     /* Copy the new ID into the buffer */
     idbuf[0] = id[0];
@@ -2265,8 +2276,8 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
     if (d64_getid(path, idbuf))
       return;
 
-   if (partition[path->part].imagetype == D64_TYPE_D71)
-    if (d64_format_track(part, buf, get_param(part, 53)))
+   if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
+    if (d64_format_track(part, buf, 53))
       return;
 
     /* clear the entire directory track */
@@ -2322,8 +2333,10 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    memset(buffer->data + offset, 0xa0, 16);
    memcpy(buffer->data + offset, newname, ustrlen(newname));
    
-   memset(buffer->data + offset + 18, 0x20, 2);
-   if (newid) memcpy(buffer->data + offset + 18, newid, ustrlen(newid));
+   if (newid) {
+      memset(buffer->data + offset + 18, 0x20, 2);
+      memcpy(buffer->data + offset + 18, newid, ustrlen(newid));
+   }
 
   image_write(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256, 1);
    cleanup_and_free_buffer(buffer);

@@ -1721,11 +1721,22 @@ static void parse_set_header(int off) {
 
   if (parse_path(command_buffer+off, &path, &name, 0))
     return;
-  id = ustrchr(name, ',');
-  if (id != NULL) {
-    *id = 0;
-    id++;
+    
+  if (off == 3)
+  {
+     id = NULL;
   }
+  else
+  {
+     id = ustrchr(name, ',');
+     if (id != NULL) {
+       *id = 0;
+       id++;
+     }
+     else
+       id = (uint8_t*) "";
+  }
+  
   if (name[0] == '\0') {
     set_error(ERROR_SYNTAX_NONAME);
     return;
@@ -2437,6 +2448,10 @@ static void parse_xcommand(void) {
 
   case 'U':
     parse_eunlock();
+    break;
+
+  case 'H':
+    parse_set_header(2);
     break;
 
   default:
