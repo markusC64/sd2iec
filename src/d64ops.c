@@ -2296,17 +2296,59 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
 
 static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
 {
-  uint8_t *ptr;
+  if (dent != 0)
+  {
+     uint8_t *ptr;
+     /* Read the directory entry of the file */
+     if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
+       return;
 
-  /* Read the directory entry of the file */
-  if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
-    return;
+     ptr = ops_scratch + DIR_OFS_FILE_TYPE;
+     *ptr = (*ptr & 0x8F) | attr;
 
-  ptr = ops_scratch + DIR_OFS_FILE_TYPE;
-  *ptr = (*ptr & 0x8F) | attr;
+     write_entry(path->part, &dent->pvt.dxx.dh, ops_scratch, 1);
+  }
+  else
+  {
+     buffer_t *buffer = alloc_buffer();
+     uint8_t sector;
+   
+     /* allow format on DNP only when in the root directory */
+     if (partition[path->part].imagetype == D64_TYPE_DNP &&
+        (partition[path->part].current_dir.dxx.track  != 1 ||
+         partition[path->part].current_dir.dxx.sector != 1))
+       
+       return;
 
-  write_entry(path->part, &dent->pvt.dxx.dh, ops_scratch, 1);
+     if (partition[path->part].imagetype == D64_TYPE_DNP)
+        sector = path->dir.dxx.sector;
+     else
+        sector = 0;
 
+     if (image_read(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256))
+     {
+       cleanup_and_free_buffer(buffer);
+       return;
+     }
+  
+     switch (partition[path->part].imagetype & D64_TYPE_MASK) {
+       case D64_TYPE_D41:
+       case D64_TYPE_D71:
+          buffer->data[2] = attr ? 0x3C : 0x41;
+          break;
+
+       case D64_TYPE_D81:
+          buffer->data[2] = attr ? 0x3D : 0x44;
+          break;
+
+       case D64_TYPE_DNP:
+          buffer->data[2] = attr ? 0x3E : 0x48;
+          break;
+     }
+   
+     image_write(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256, 1);
+     cleanup_and_free_buffer(buffer);
+  }
 }
 
 static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
