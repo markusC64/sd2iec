@@ -79,11 +79,21 @@ Supported commands:
   A:R=foo  sets attribute Readonly, removes any other
   A:H=foo  sets attribute hidden, removes any other
 
-- L/EL/EU:
+- L/EL/EU/XL/XU:
   Sets resp. clears reqad only flag 
   L:foo    toggles flag on a single file 
-  EL:foo   sets flag on files
-  EU:foo   clears flag on files
+  EL:foo   sets flag on files, EL:$ locks whole image 
+  EU:foo   clears flag on files, EU:$ unlocks whole image
+
+- EH
+  Toggles hidden flag 
+  EH/:foo    toggles flag on a single file - a Path must be present 
+
+- EH, D, R-H, XH: Change / Rename Header
+  R-H:foo   chanegs header to foo
+  D:foo,ba  changes header to 'foo' and id to 'ba' - colomn must follow the 'D' immediately.
+  EH:foo,ba changes header to 'foo' and id to 'ba' - a path must NOT be given.
+  XH:foo,ba changes header to 'foo' and id to 'ba'
 
 - CD/MD/RD:
   Subdirectory access is compatible to the syntax used by the CMD drives,
@@ -382,6 +392,8 @@ Supported commands:
 
   - XN+/XN-  Enable/disable fast format. In fast format mode, only the directory
              track of an image is wiped during format.
+
+  - XH+/HN-  Enable/disable hiding files with file type flag 0x20 in images.
 
   - X*+/X*-  Enable/disable 1581-style * matching. If enabled, characters
              after a * will be matched against the end of the file name.
