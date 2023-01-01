@@ -1651,6 +1651,11 @@ uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uin
   FRESULT res;
   UINT byteswritten;
 
+  if (partition[part].imagetype & D64_IS_READLNLY) {
+     set_error_ts(ERROR_WRITE_PROTECT,0,0);
+     return 2;
+  }
+
   if (offset != (DWORD)-1) {
     res = f_lseek(&partition[part].imagehandle, offset);
     if (res != FR_OK) {
@@ -1715,7 +1720,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
   ext = ustrrchr(name, '.');
   imagetype = check_imageext(name);
 
-  if (ext != NULL && imagetype != IMG_UNKNOWN) {
+  if (ext != NULL && (imagetype & D64_TYPE_MASK) != IMG_UNKNOWN) {
     /* remove extension from name (which will be used as the disk label) */
     *ext = '\0';
   } else {
@@ -1728,12 +1733,12 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     ext = NULL;
   }
 
-  if (id != NULL && ustrlen(id) != 2 && ustrlen(id) != 3 && imagetype != IMG_IS_DNP) {
+  if (id != NULL && ustrlen(id) != 2 && ustrlen(id) != 3 && (imagetype & D64_TYPE_MASK) != IMG_IS_DNP) {
     set_error(ERROR_SYNTAX_UNKNOWN);
     return;
   }
 
-  if (id != NULL && imagetype == IMG_IS_DNP && ustrlen(id) != 3) {
+  if (id != NULL && (imagetype & D64_TYPE_MASK )== IMG_IS_DNP && ustrlen(id) != 3) {
     set_error(ERROR_SYNTAX_UNKNOWN);
     return;
   }
@@ -1752,7 +1757,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
       return;
     }
 
-    switch (imagetype) {
+    switch (imagetype & D64_TYPE_MASK) {
       case IMG_IS_D41:
         fsize = D41_SIZE;
         break;
@@ -1790,7 +1795,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     }
   } else if (res == FR_OK) { // image file exists
     /* Don't overwrite the image if the extension was auto-appended */
-    if (ext == NULL || imagetype == IMG_IS_DNP) {
+    if (ext == NULL || (imagetype & D64_TYPE_MASK) == IMG_IS_DNP) {
       f_close(&partition[path->part].imagehandle);
       set_error(ERROR_FILE_EXISTS);
       return;
@@ -1802,7 +1807,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     return;
   }
 
-  if (imagetype == IMG_IS_DNP) {
+  if ((imagetype & D64_TYPE_MASK) == IMG_IS_DNP) {
     f_close(&partition[path->part].imagehandle);
     return;
   }
