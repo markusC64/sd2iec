@@ -1793,26 +1793,34 @@ static void parse_elock(void) {
   filename = ustr1tok(command_buffer+2,',',&tmp);
 
   set_dirty_led(1);
+  
   /* Loop over all file names */
   set_error(ERROR_OK);
   while (filename != NULL) {
     parse_path(filename, &path, &name, 0);
+    
+    if (name[0] == '$')
+    {
+         set_attrib(&path, NULL, 1);
+    }
+    else
+    {
+       if (opendir(&matchdh, &path))
+         return;
 
-    if (opendir(&matchdh, &path))
-      return;
+       while (1) {
+         res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
+         if (res < 0)
+           break;
+         if (res > 0)
+           return;
 
-    while (1) {
-      res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
-      if (res < 0)
-        break;
-      if (res > 0)
-        return;
-
-      /* Skip directories */
-      if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
-        continue;
-      attr = dent.typeflags | FLAG_RO;
-      set_attrib(&path, &dent, attr);
+         /* Skip directories */
+         if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
+           continue;
+         attr = dent.typeflags | FLAG_RO;
+         set_attrib(&path, &dent, attr);
+       }
     }
 
     filename = ustr1tok(NULL,',',&tmp);
@@ -1831,25 +1839,34 @@ static void parse_eunlock(void) {
   filename = ustr1tok(command_buffer+2,',',&tmp);
 
   set_dirty_led(1);
+  
   /* Loop over all file names */
+  set_error(ERROR_OK);
   while (filename != NULL) {
     parse_path(filename, &path, &name, 0);
+    
+    if (name[0] == '$')
+    {
+         set_attrib(&path, NULL, 0);
+    }
+    else
+    {
+       if (opendir(&matchdh, &path))
+         return;
 
-    if (opendir(&matchdh, &path))
-      return;
+       while (1) {
+         res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
+         if (res < 0)
+           break;
+         if (res > 0)
+           return;
 
-    while (1) {
-      res = next_match(&matchdh, name, NULL, NULL, FLAG_HIDDEN, &dent);
-      if (res < 0)
-        break;
-      if (res > 0)
-        return;
-
-      /* Skip directories */
-      if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
-        continue;
-      attr = dent.typeflags & ~FLAG_RO;
-      set_attrib(&path, &dent, attr);
+         /* Skip directories */
+         if ((dent.typeflags & TYPE_MASK) == TYPE_DIR)
+           continue;
+         attr = dent.typeflags & ~FLAG_RO;
+         set_attrib(&path, &dent, attr);
+       }
     }
 
     filename = ustr1tok(NULL,',',&tmp);
