@@ -35,23 +35,11 @@ jobs:
          cd ..
 
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref }}
-        release_name: SD2IEC Firmware ${{ steps.build.outputs.ver }}
-        body: "[**Release Notes:**]"
-        draft: true
-        prerelease: false
-
-    - name: Upload Release Asset (Windows)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: sd2iec-firmware-${{ steps.build.outputs.ver }}.zip
-        asset_name: sd2iec-firmware-${{ steps.build.outputs.ver }}.zip
-        asset_content_type: application/zip
+         files: sd2iec-firmware-${{ steps.build.outputs.ver }}.zip
+         draft: true
+         prerelease: false
+         name: SD2IEC Firmware ${{ steps.build.outputs.ver }}
+         generate_release_notes: false
+         body: To be done.
