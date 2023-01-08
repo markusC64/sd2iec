@@ -7,7 +7,7 @@ PATCHLEVEL = 0
 FIX =
 
 # Forces bootloader version to 0, comment out or leave empty for release
-PRERELEASE = atentdead0
+PRERELEASE = -LCD0
 
 #----------------------------------------------------------------------------
 # WinAVR Makefile Template written by Eric B. Weddington, Joerg Wunsch, et al.
@@ -93,6 +93,11 @@ endif
 
 ifeq ($(CONFIG_UART_DEBUG),y)
   SRC += $(CONFIG_ARCH)/uart.c
+endif
+
+ifeq ($(CONFIG_LCD_DISPLAY),y)
+  SRC += display_lcd.c lcd.c
+#  NEED_I2C := y
 endif
 
 ifeq ($(CONFIG_REMOTE_DISPLAY),y)
@@ -186,12 +191,14 @@ PROGRAMVERSION := $(MAJOR).$(MINOR)
 BOOT_VERSION := $(BOOT_VERSION)00
 endif
 
+LCDVERSION := $(PROGRAMVERSION)
 ifdef PRERELEASE
 PROGRAMVERSION := $(PROGRAMVERSION)$(PRERELEASE)
+LCDVERSION := $(LCDVERSION)
 endif
 
 LONGVERSION := -$(CONFIGSUFFIX)
-CDEFS += -DVERSION=\"$(PROGRAMVERSION)\" -DLONGVERSION=\"$(LONGVERSION)\"
+CDEFS += -DVERSION=\"$(PROGRAMVERSION)\" -DLONGVERSION=\"$(LONGVERSION)\" -DLCDVERSION=\"$(LCDVERSION)\"
 
 
 # Define programs and commands.
@@ -320,8 +327,6 @@ $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(Q)$(OBJCOPY) -O binary -R .eeprom $< $@
 	$(E) "  CRCGEN $@"
 	$(Q)$(CRCGEN) $@ $(BINARY_LENGTH) $(CONFIG_BOOT_DEVID) $(BOOT_VERSION)
-	$(E) "  COPY   sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin"
-	$(Q)$(COPY) $@ $(OBJDIR)/sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin
 else
 $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(E) "  BIN    $@"
