@@ -60,6 +60,7 @@ ifeq ($(CONFIG_HAVE_IEC),y)
   SRC += fl-mmzak.c fl-nippon.c fl-turbodisk.c fl-ulm3.c
   SRC += fl-n0sdos.c fl-samsjourney.c fl-ultraboot.c
   SRC += fl-hypraload.c fl-krill.c
+  SRC += fl-anotherworld.c fl-wingsoffury.c fl-n0s-iffl.c
 endif
 
 ifneq ($(CONFIG_NO_SD),y)
@@ -316,6 +317,8 @@ $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(Q)$(OBJCOPY) -O binary -R .eeprom $< $@
 	$(E) "  CRCGEN $@"
 	$(Q)$(CRCGEN) $@ $(BINARY_LENGTH) $(CONFIG_BOOT_DEVID) $(BOOT_VERSION)
+	$(E) "  COPY   sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin"
+	$(Q)$(COPY) $@ $(OBJDIR)/sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin
 else
 $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(E) "  BIN    $@"

@@ -74,6 +74,10 @@ typedef enum {
   FL_KRILL_R184,
   FL_KRILL_R186,
   FL_KRILL_R192,
+  FL_ANOTHERWORLD,
+  FL_WINGSOFFURY,
+  FL_N0S_IFFL_SCAN,
+  FL_N0S_IFFL_LOAD,
 } fastloaderid_t;
 
 extern fastloaderid_t detected_loader;
@@ -112,6 +116,10 @@ bool load_hypraload(uint8_t);
 bool drvchkme_krill(uint8_t);
 bool bus_sleep_krill(uint8_t);
 bool load_krill(uint8_t);
+bool load_anotherworld(uint8_t);
+bool load_wingsoffury(uint8_t);
+bool scan_n0s_iffl(uint8_t);
+bool load_n0s_iffl(uint8_t);
 
 int16_t dolphin_getc(void);
 uint8_t dolphin_putc(uint8_t data, uint8_t with_eoi);
