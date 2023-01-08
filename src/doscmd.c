@@ -55,6 +55,10 @@
 #include "wrapops.h"
 #include "doscmd.h"
 
+#ifdef CONFIG_LCD_DISPLAY
+#include "display_lcd.h"
+#endif
+
 #define CURSOR_RIGHT 0x1d
 
 static FIL romfile;
@@ -390,7 +394,6 @@ static const PROGMEM struct fastloader_handler_s fl_handler_table[] = {
   { 0x0483, FL_N0S_IFFL_SCAN,    scan_n0s_iffl, 0 },
   { 0x03b5, FL_N0S_IFFL_LOAD,    load_n0s_iffl, 0 },
 #endif
-
   { 0, FL_NONE, NULL, 0 }, // end marker
 };
 
@@ -723,6 +726,10 @@ void do_chdir(uint8_t *parsestr) {
   if (parse_path(parsestr, &path, &name, 1))
     return;
 
+#ifdef CONFIG_LCD_DISPLAY
+  if (fs_mode == 0) DS_CD((char *)name);
+#endif
+
   /* clear '*' file */
   previous_file_dirent.name[0] = 0;
 
@@ -801,6 +808,9 @@ static void parse_rmdir(void) {
 
     path.dir = partition[part].current_dir;
 
+#ifdef CONFIG_LCD_DISPLAY
+    ///DS_DEL((char *)&dent);
+#endif
     res = file_delete(&path, &dent);
     if (res != 255)
       set_error_ts(ERROR_SCRATCHED,res,0);
@@ -2309,6 +2319,61 @@ static void parse_xcommand(void) {
   clean_cmdbuffer();
 
   switch (command_buffer[1]) {
+
+#ifdef CONFIG_LCD_DISPLAY
+  case 'T':
+    /* Text */
+    str = command_buffer+3;
+    if (command_buffer[2]=='1')
+    {
+      DS_SHOW(0,(char *)str);
+    }
+    if (command_buffer[2]=='2')
+    {
+      DS_SHOW(1,(char *)str);
+    }
+    if (command_buffer[2]=='C')
+    {
+      DS_CTRL((char *)str);
+    }
+    break;
+
+  case 'A':
+    /* About */
+    DS_TITLE;
+    DS_SHOWP(1,"2009 by S. Bader");
+    break;
+
+  case 'G':
+    /* Greetings / Credits */
+    DS_SHOWP(0,"Credits 2 Unseen");
+    DS_SHOWP(1," and Shadowolf!");
+    break;
+
+  case 'X':
+    /* eee */
+    DS_EEE;
+    break;
+
+  case 'C':
+    /* andi6510: LCD contrast */
+    str = command_buffer + 2;
+    num = parse_number(&str);
+    if (num < 64)
+    {
+      char buf[3];
+      buf[0]='0'+num/10;
+      buf[1]='0'+num%10;
+      buf[2]=0;
+      DS_SHOWP(1,"Contrast: ");
+      DS_PUTS(buf);
+      DS_CONTRAST(num);
+    } else {
+      set_error(ERROR_SYNTAX_UNABLE);
+    }
+    break;
+#endif
+
   case 'E':
     /* Change file extension mode */
     str = command_buffer+2;
