@@ -1635,6 +1635,9 @@ static uint8_t d64_delete(path_t *path, cbmdirent_t *dent) {
   /* Read the directory entry of the file */
   if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
     return 255;
+    
+  if (ops_scratch[DIR_OFS_FILE_TYPE] & FLAG_RO)
+    return 0;
 
   /* Free the sector chain in the BAM */
   linkbuf[0] = ops_scratch[DIR_OFS_TRACK];
