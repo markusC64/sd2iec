@@ -992,6 +992,7 @@ void file_open(uint8_t secondary) {
     if (res == 0) {
       /* Match found */
       if (command_buffer[0] == '@') {
+        uint8_t res2;
         /* Make sure there is a free buffer to open the new file later */
         if (!check_free_buffers()) {
           set_error(ERROR_NO_CHANNEL);
@@ -1002,8 +1003,14 @@ void file_open(uint8_t secondary) {
         cbmdirent_t dentcopy = dent;
 
         /* Rewrite existing file: Delete the old one */
-        if (file_delete(&path, &dentcopy) == 255)
+
+        res2 = file_delete(&path, &dentcopy);
+        if (res2 == 255)
           return;
+        if (res2 == 0) {
+           set_error(ERROR_WRITE_PROTECT);
+           return;
+        }
 
 #ifdef CONFIG_M2I
         /* Force fatops to create a new name based on the (long) CBM- */
