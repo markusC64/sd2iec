@@ -14,7 +14,7 @@ jobs:
       id: build
       run: |
          sudo apt-get update
-         sudo apt-get -y install avr-libc
+         sudo apt-get -y install avr-libc gcc-arm-none-eabi
          REV=$(git rev-parse --short HEAD | tr a-z A-Z)
          VER=63
          PLUS=+
@@ -30,6 +30,10 @@ jobs:
          make CONFIG=configs/config-evo2 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-lcdcf PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-Arduino1280-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-Arduino-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-XS-1541 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-alnwlsn PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          mkdir bin
          cp obj-m1281-uIEC/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC.bin
          cp obj-m1281-uIEC3/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC3.bin
@@ -42,6 +46,10 @@ jobs:
          cp obj-m1284p-evo2/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-evo2.bin
          cp obj-m1284p-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-lcd.bin
          cp obj-m1284p-lcdcf/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-lcdcf.bin
+         cp obj-m1280-Arduino1280-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1280-Arduino1280-lcd.bin
+         cp obj-m2560-Arduino-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-m2560-Arduino-lcd.bin
+         cp obj-m644p-XS-1541/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m644p-XS-1541.bin
+         cp obj-m644p-alnwlsn/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m644p-alnwlsn.bin
          cd bin
          zip ../sd2iec-firmware-1.0.0atentdead0-${VER}${PLUS}-$REV.zip sd2iec*
          cd ..
