@@ -18,6 +18,7 @@ jobs:
          REV=$(git rev-parse --short HEAD | tr a-z A-Z)
          VER=63
          PLUS=+
+         make CONFIG=configs/config-mbed PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
          make CONFIG=configs/config-uIEC PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-uIEC3 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-larsp PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
@@ -28,6 +29,10 @@ jobs:
          make CONFIG=configs/config-evo2 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          make CONFIG=configs/config-lcdcf PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-Arduino1280-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-Arduino-lcd PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-XS-1541 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
+         make CONFIG=configs/config-alnwlsn PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV-LCD
          mkdir bin
          cp obj-m1281-uIEC/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC.bin
          cp obj-m1281-uIEC3/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC3.bin
@@ -35,10 +40,15 @@ jobs:
          cp obj-m1284p-sw1/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-sw1.bin
          cp obj-m1284p-sw2/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-sw2.bin
          cp obj-lpc1768-arm2iec1/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-lpc1768-arm2iec1.bin
+         cp obj-lpc1768-mbed/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-lpc1768-mbed.bin
          cp obj-m1284p-petSD/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-petSD.bin
          cp obj-m1284p-evo2/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-evo2.bin
          cp obj-m1284p-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-lcd.bin
          cp obj-m1284p-lcdcf/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-lcdcf.bin
+         cp obj-m1280-Arduino1280-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1280-Arduino1280-lcd.bin
+         cp obj-m2560-Arduino-lcd/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-m2560-Arduino-lcd.bin
+         cp obj-m644p-XS-1541/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m644p-XS-1541.bin
+         cp obj-m644p-alnwlsn/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m644p-alnwlsn.bin
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
