@@ -23,6 +23,13 @@
 #  config: User-configurable options to simplify hardware changes and/or
 #          reduce the code/ram requirements of the code.
 #
+# The roule:
+#           Enable an option  =y
+#           Disable an option =n
+#
+# Note:
+# The build system assumes that if an option is not mentioned,
+# this option is disabled.
 #
 # This file is included in the main sd2iec Makefile and also parsed
 # into autoconf.h.
@@ -48,7 +55,7 @@ CONFIG_MCU=atmega644p
 # (known troublemakers: binutils 2.17, 2.18 seems fine)
 CONFIG_LINKER_RELAX=n
 
-# MCU frequency in Hz - the fastloader code is hardcoded for 8MHz
+# MCU frequency in Hz - the fastloader code is no more hardcoded for 8MHz
 CONFIG_MCU_FREQ=8000000
 
 # Add a bootloader signature
@@ -72,7 +79,7 @@ CONFIG_UART_BUF_SHIFT=6
 CONFIG_COMMAND_CHANNEL_DUMP=y
 
 # Enable support for bus silence requests from fastloaders (ignore ATN)
-CONFIG_BUS_SILENCE_REQ=n
+CONFIG_BUS_SILENCE_REQ=y
 
 # Enable Turbodisk soft fastloader support
 # This option requires an external crystal oscillator!
@@ -118,22 +125,25 @@ CONFIG_LOADER_N0SDOS=y
 CONFIG_LOADER_SAMSJOURNEY=y
 
 # Enable Ultraboot fastloader
-CONFIG_LOADER_ULTRABOOT=n
+CONFIG_LOADER_ULTRABOOT=y
 
 # Enable Hypra-Load fastloader
-CONFIG_LOADER_HYPRALOAD=n
+CONFIG_LOADER_HYPRALOAD=y
 
 # Enable Krill's loader
-CONFIG_LOADER_KRILL=n
+CONFIG_LOADER_KRILL=y
+
+# Enable Another word fastloader
+CONFIG_LOADER_ANOTHERWORLD=y
+
+# Enable Wings of furry fastloader
+CONFIG_LOADER_WINGSOFFURY=y
+
+# Enable N0S IFFL fastloader
+CONFIG_LOADER_N0S_IFFL=y
 
 # Enable DolphinDOS parallel speeder
 CONFIG_PARALLEL_DOLPHIN=y
-
-# Enable Another World's loader
-CONFIG_LOADER_ANOTHERWORLD=y
-
-# Enable Wings of Fury's loader
-CONFIG_LOADER_WINGSOFFURY=y
 
 # Select which hardware to compile for
 # Valid values:
@@ -185,7 +195,7 @@ CONFIG_BUFFER_COUNT=6
 
 # Track the stack size
 # Warning: This option increases the code size a lot.
-CONFIG_STACK_TRACKING=n
+CONFIG_STACK_TRACKING=y
 
 # Maximum number of partitions
 CONFIG_MAX_PARTITIONS=4
@@ -197,6 +207,11 @@ CONFIG_RTC_SOFTWARE=y
 #CONFIG_RTC_LPC17XX=y
 # supports both DS1307 and DS3231
 CONFIG_RTC_DSRTC=y
+
+# Onboard LCD display
+# (the build system assumes that LCD connection parameters
+# are entered in the lcd.h file when you enable this)
+CONFIG_LCD_DISPLAY=y
 
 # I2C display
 CONFIG_REMOTE_DISPLAY=y

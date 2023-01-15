@@ -183,7 +183,7 @@ bool load_wingsoffury(UNUSED_PARAMETER) {
   uint8_t tmp = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS) & 0x0f;
   if (tmp == 2) {
     set_error(ERROR_CLOCK_UNSTABLE);
-    return false;
+    return true;
   }
 #endif
 
@@ -261,5 +261,6 @@ done:
   delay_ms(200);
   set_dirty_led(0);
   set_busy_led(0);
+
   return true;
 }

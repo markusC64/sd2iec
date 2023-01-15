@@ -1,5 +1,5 @@
 /* sd2iec - SD/MMC to Commodore serial bus interface/controller
-   Copyright (C) 2007-2022  Ingo Korb <ingo@akana.de>
+   Copyright (C) 2007-2022  Ingo Korb <ingo@akana.de> and contributors   
 
    Inspired by MMC2IEC by Lars Pontoppidan et al.
 
@@ -32,7 +32,7 @@
 #include "avrcompat.h"
 
 /* ----- Common definitions for all AVR hardware variants ------ */
-
+#define ARM_ONLY_CODE // for fl-kriil,c
 /* Return value of buttons_read() */
 typedef uint8_t rawbutton_t;
 
@@ -723,6 +723,131 @@ static inline void buttons_init(void) {
 #  define SOFTI2C_BIT_INTRQ     PC6
 #  define SOFTI2C_DELAY         6
 
+/* ---------- Hardware configuration: alnwlsn ---------- */
+#elif CONFIG_HARDWARE_VARIANT==6
+#  define HAVE_SD
+#  define SD_CHANGE_HANDLER     ISR(INT0_vect)
+#  define SD2_CHANGE_HANDLER    ISR(INT2_vect)
+#  define SD_SUPPLY_VOLTAGE     (1L<<18)
+
+/* 250kHz slow, 2MHz fast */
+#  define SPI_DIVISOR_SLOW 32
+#  define SPI_DIVISOR_FAST 4
+
+static inline void sdcard_interface_init(void) {
+  DDRD  &= ~_BV(PD2);
+  PORTD |=  _BV(PD2);
+  DDRD  &= ~_BV(PD6);
+  PORTD |=  _BV(PD6);
+  EICRA |=  _BV(ISC00);
+  EIMSK |=  _BV(INT0);
+#ifdef CONFIG_TWINSD
+  PORTD |=  _BV(PD3); // CS
+  DDRD  |=  _BV(PD3); // CS
+  DDRC  &= ~_BV(PC7); // WP
+  PORTC |=  _BV(PC7); // WP
+  DDRB  &= ~_BV(PB2); // Detect
+  PORTB |=  _BV(PB2); // Detect
+  EICRA |=  _BV(ISC20); // Change interrupt
+  EIMSK |=  _BV(INT2);  // Change interrupt
+#endif
+}
+
+static inline uint8_t sdcard_detect(void) {
+  return !(PIND & _BV(PD2));
+}
+
+static inline uint8_t sdcard_wp(void) {
+  return PIND & _BV(PD6);
+}
+
+static inline uint8_t sdcard2_detect(void) {
+  return !(PINB & _BV(PB2));
+}
+
+static inline uint8_t sdcard2_wp(void) {
+  return PINC & _BV(PC7);
+}
+
+static inline __attribute__((always_inline)) void sdcard2_set_ss(uint8_t state) {
+  if (state)
+    PORTD |= _BV(PD3);
+  else
+    PORTD &= ~_BV(PD3);
+}
+
+static inline uint8_t device_hw_address(void) {
+  return 8 + !(PIND & _BV(PD7)) + 2*!(PIND & _BV(PD5));
+}
+
+static inline void device_hw_address_init(void) {
+  DDRD  &= ~(_BV(PD7)|_BV(PD5));
+  PORTD |=   _BV(PD7)|_BV(PD5);
+}
+
+static inline void leds_init(void) {
+  DDRC |= _BV(PC0);
+  DDRC |= _BV(PC1);
+}
+
+static inline __attribute__((always_inline)) void set_busy_led(uint8_t state) {
+  if (state)
+    PORTC |= _BV(PC0);
+  else
+    PORTC &= ~_BV(PC0);
+}
+
+static inline __attribute__((always_inline)) void set_dirty_led(uint8_t state) {
+  if (state)
+    PORTC |= _BV(PC1);
+  else
+    PORTC &= ~_BV(PC1);
+}
+
+static inline void toggle_dirty_led(void) {
+  PINC |= _BV(PC1);
+}
+
+#  define IEC_INPUT             PINA
+#  define IEC_DDR               DDRA
+#  define IEC_PORT              PORTA
+#  define IEC_PIN_ATN           PA0
+#  define IEC_PIN_DATA          PA1
+#  define IEC_PIN_CLOCK         PA2
+#  define IEC_PIN_SRQ           PA3
+#  define IEC_SEPARATE_OUT
+#  define IEC_OPIN_ATN          PA4
+#  define IEC_OPIN_DATA         PA5
+#  define IEC_OPIN_CLOCK        PA6
+#  define IEC_OPIN_SRQ          PA7
+#  define IEC_ATN_INT_VECT      PCINT0_vect
+#  define IEC_PCMSK             PCMSK0
+
+static inline void iec_interrupts_init(void) {
+  PCICR |= _BV(PCIE0);
+  PCIFR |= _BV(PCIF0);
+}
+
+#  define BUTTON_NEXT           _BV(PC4)
+#  define BUTTON_PREV           _BV(PC3)
+
+static inline rawbutton_t buttons_read(void) {
+  return PINC & (BUTTON_NEXT | BUTTON_PREV);
+}
+
+static inline void buttons_init(void) {
+  DDRC  &= (uint8_t)~(BUTTON_NEXT | BUTTON_PREV);
+  PORTC |= BUTTON_NEXT | BUTTON_PREV;
+}
+
+#  define SOFTI2C_PORT          PORTC
+#  define SOFTI2C_PIN           PINC
+#  define SOFTI2C_DDR           DDRC
+#  define SOFTI2C_BIT_SCL       PC4
+#  define SOFTI2C_BIT_SDA       PC5
+#  define SOFTI2C_BIT_INTRQ     PC6
+#  define SOFTI2C_DELAY         6
+
 
 /* Hardware configuration 6 was old NKC MMC2IEC */
 
@@ -1123,6 +1248,328 @@ static inline void buttons_init(void) {
   DDRB &= (uint8_t) ~ (BUTTON_NEXT | BUTTON_PREV);
   PORTB |= BUTTON_NEXT | BUTTON_PREV;
 }
+
+#elif CONFIG_HARDWARE_VARIANT == 11
+
+// ------------------------------------------------------------------------
+// ---- Hardware configuration: Arduino Mega 2560 or clone + LCD shield ---
+// ------------------------------------------------------------------------
+// NOTE: A lot of features are marked as OPTIONAL and can be added with
+// additional components (Buttons, LEDs, RTC etc). 
+// These components are not necessary for the proper operation of the
+// Arduino Mega2560 SD2IEC LCD, but may be added.
+// 
+
+
+/*** SD card support ***/
+// If your device supports SD cards by default, define this symbol.
+
+/*** SD card support ***/
+// If your device supports SD cards by default, define this symbol.
+#define HAVE_SD
+
+// Declaration of the interrupt handler for SD card change
+#define SD_CHANGE_HANDLER ISR(INT4_vect)
+
+// Initialize all pins and interrupts related to SD - except SPI
+static inline void sdcard_interface_init(void)
+{
+#if 0
+	// card detect (SD1)
+        DDRC  and_eq compl _BV(PC4);
+        PORTC or_eq  _BV(PC4);
+	// write protect (SD1) (NOT WIRED YET, PE2 unused on the Arduino)
+        DDRE and_eq compl _BV(PE2);
+	PORTE or_eq _BV(PE2);
+
+	// card change interrupt (SD1)
+	EICRB or_eq _BV(ISC40);   // Any logical change on INTn
+	EICRB and_eq ~_BV(ISC41);  // generates an interrupt request
+
+        EIMSK or_eq _BV(INT4);
+
+	// chip select (SD1)
+        PORTC or_eq _BV(PC3);
+        DDRC or_eq _BV(PC3);
+#endif
+
+
+	// Note: Wrapping SD2 in CONFIG_TWINSD may be a good idea
+#if 0
+	/* Declaration of the interrupt handler for SD card 2 change */
+	#  define SD2_CHANGE_HANDLER ISR(INT9_vect)
+	/* chip select (SD2) */
+	PORTD |= _BV(PD4);
+	DDRD |= _BV(PD4);
+	/* card detect (SD2) */
+	DDRD &= ~_BV(PD3);
+	PORTD |= _BV(PD3);
+	/* write protect (SD2) */
+	DDRD &= ~_BV(PD7);
+	PORTD |= _BV(PD7);
+	/* card change interrupt (SD2) */
+	EICRA |=  _BV(ISC90); // Change interrupt
+	EIMSK |=  _BV(INT9);  // Change interrupt
+#endif
+}
+
+// sdcard_detect() must return non-zero while a card is inserted
+// This must be a pin capable of generating interrupts.
+static inline uint8_t sdcard_detect(void)
+{
+	// OPTIONAL: Add detect pin for sd card if the shield has such.
+	// Simply return true otherwise, fake always available.
+        return 1;
+
+}
+
+// SD card 1 is assumed to use the standard SS pin
+// If that's not true, #define SDCARD_SS_SPECIAL and
+// implement this function:
+#if 0
+#define SDCARD_SS_SPECIAL
+static inline __attribute__((always_inline)) void sdcard_set_ss(uint8_t state)
+{
+	if(state)
+                PORTC or_eq _BV(PC3);
+	else
+                PORTC and_eq ~_BV(PC3);
+}
+#endif
+
+
+// Returns non-zero when the currently inserted card is write-protected
+static inline uint8_t sdcard_wp(void)
+{
+	// OPTIONAL: Add write protect pin for sd card, if the shield has such.
+	// Otherwise simply return false (fake always write enabled).
+        return 0;
+}
+
+// Support for a second SD card - use CONFIG_TWINSD=y in your config file to enable!
+// Same as the two functions above, but for card 2
+static inline uint8_t sdcard2_detect(void)
+{
+	return 0;
+}
+static inline uint8_t sdcard2_wp(void)
+{
+	return 0;
+}
+
+// SD card 2 CS pin
+//static inline __attribute__((always_inline)) void sdcard2_set_ss(uint8_t state)
+//{
+//        VAR_UNUSED(state);
+//}
+
+/* SD Card supply voltage - choose the one appropiate to your board */
+// #  define SD_SUPPLY_VOLTAGE (1L<<15)  // 2.7V - 2.8V
+// #  define SD_SUPPLY_VOLTAGE (1L<<16)  // 2.8V - 2.9V
+// #  define SD_SUPPLY_VOLTAGE (1L<<17)  // 2.9V - 3.0V
+// #  define SD_SUPPLY_VOLTAGE (1L<<18)  // 3.0V - 3.1V
+// #  define SD_SUPPLY_VOLTAGE (1L<<19)  // 3.1V - 3.2V
+// #  define SD_SUPPLY_VOLTAGE (1L<<20)  // 3.2V - 3.3V
+#  define SD_SUPPLY_VOLTAGE (1L << 21)  // 3.3V - 3.4V
+// #  define SD_SUPPLY_VOLTAGE (1L<<22)  // 3.4V - 3.5V
+// #  define SD_SUPPLY_VOLTAGE (1L<<23)  // 3.5V - 3.6V
+
+// SPI clock divisors - the slow one must be 400KHz or slower,
+// the fast one can be as high as you thing your hardware will handle
+#  define SPI_DIVISOR_SLOW 32
+#  define SPI_DIVISOR_FAST 4
+
+
+/*** Device address selection ***/
+// device_hw_address() returns the hardware-selected device address
+static inline uint8_t device_hw_address(void)
+{
+	// OPTIONAL: Attach and implement a 2-button DIP-switch.
+	// If not we return always a hard coded number.
+	return 8;
+	// return 8 + not(PIND bitand _BV(PD7)) + 2 * not(PIND bitand _BV(PD5));
+}
+
+/* Configure hardware device address pins */
+static inline void device_hw_address_init(void)
+{
+	// DDRD  and_eq compl (_BV(PD7) bitor _BV(PD5));
+	// PORTD or_eq   _BV(PD7) bitor _BV(PD5);
+}
+
+
+/*** LEDs ***/
+// Please don't build single-LED hardware anymore...
+
+// Initialize ports for all LEDs
+static inline void leds_init(void)
+{
+	// Note: Depending on the chip and register these lines can compile
+	//       to one instruction each on AVR. For two bits this is one
+        DDRB |= _BV(PB6) | _BV(PB7);
+        
+	// OPTIONAL: Implement a second led (RED one!).
+        // DDRH |= _BV(PH3);
+}
+
+// --- "BUSY" led, recommended color: green (usage similiar to 1541 LED) ---
+static inline __attribute__((always_inline)) void set_busy_led(uint8_t state)
+{
+        // OPTIONAL: Attach and implement a green led for BUSY.
+        // VAR_UNUSED(state);
+        if (state)
+        PORTB |= _BV(PB6);
+      else
+       PORTB &= ~_BV(PB6);
+}
+
+// --- "DIRTY" led, recommended color: red (errors, unwritten data in memory) ---
+static inline __attribute__((always_inline)) void set_dirty_led(uint8_t state)
+{
+  if (state)
+    PORTB |= _BV(PB7);
+  else
+    PORTB &= ~_BV(PB7);
+}
+
+// Toggle function used for error blinking
+static inline void toggle_dirty_led(void)
+{
+	// Sufficiently new AVR cores have a toggle function
+        PINB |= _BV(PB7);
+}
+
+
+
+
+
+/*** IEC signals ***/
+#define IEC_INPUT PIND
+#define IEC_DDR   DDRD
+#define IEC_PORT  PORTD
+
+// Pins assigned for the IEC lines
+#define IEC_PIN_ATN   PD3
+#define IEC_PIN_DATA  PD2
+#define IEC_PIN_CLOCK PD1
+#define IEC_PIN_SRQ   PD0
+
+// Use separate input/output lines?
+// The code assumes that the input is NOT inverted, but the output is.
+//#define IEC_SEPARATE_OUT
+//#define IEC_OPIN_ATN   PA4
+//#define IEC_OPIN_DATA  PA5
+//#define IEC_OPIN_CLOCK PA6
+//#define IEC_OPIN_SRQ   PA7
+
+/* You can use different ports for input and output bits. The code tries */
+/* to not stomp on the unused bits. IEC output is on IEC_PORT.           */
+/* Not well-tested yet.                                                  */
+//#  define IEC_DDRIN      DDRX
+//#  define IEC_DDROUT     DDRY
+//#  define IEC_PORTIN     PORTX
+
+/* ATN interrupt (required) */
+#define IEC_ATN_INT         INT3
+#define IEC_ATN_INT_VECT    INT3_vect
+static inline void iec_interrupts_init(void)
+{
+        EIMSK |= _BV(INT3);
+   
+}
+
+// CLK interrupt (not required)
+// Dreamload requires interrupts for both the ATN and CLK lines. If both are served by
+// the same PCINT vector, define that as ATN interrupt above and define IEC_PCMSK.
+//#define IEC_PCMSK             PCMSK0
+// If the CLK line has its own dedicated interrupt, use the following definitions:
+#define IEC_CLK_INT           INT1
+#define IEC_CLK_INT_VECT      INT1_vect
+static inline void iec_clock_int_setup(void)
+{
+
+         EICRA |= _BV(ISC10);
+
+}
+
+
+/*** IEEE signals ***/
+// not documented yet, look at petSD/XS-1541 for guidance
+
+/*** User interface ***/
+// Button NEXT changes to the next disk image and enables sleep mode (held)
+  #define BUTTON_NEXT _BV(PF2)
+
+
+// Button PREV changes to the previous disk image
+// OPTIONAL: Add a push button for previous disk image.
+#define BUTTON_PREV _BV(PF1)
+
+// Read the raw button state - a depressed button should read as 0
+static inline rawbutton_t buttons_read(void)
+{
+	// OPTIONAL: Attach/Implement buttons on some GPIO.
+
+
+          return PINF & (BUTTON_NEXT | BUTTON_PREV);
+}
+
+static inline void buttons_init(void)
+{
+	// OPTIONAL: Attach/Implement buttons on some GPIO.
+        DDRF  &= (uint8_t)~(BUTTON_NEXT | BUTTON_PREV);
+        PORTF |= BUTTON_NEXT | BUTTON_PREV;
+}
+// Software I2C lines for the RTC
+#define SOFTI2C_PORT    PORTA
+#define SOFTI2C_PIN     PINA
+#define SOFTI2C_DDR     DDRA
+#define SOFTI2C_BIT_SCL PA3
+#define SOFTI2C_BIT_SDA PA1
+#define SOFTI2C_DELAY   6
+
+
+/*** board-specific initialisation ***/
+
+#define HAVE_BOARD_INIT
+static inline void board_init(void)
+{
+// Arduino MEGA can be Clock down to 8 MHz in case when the fastloaders
+// are hardcoded to 8 MHz - no more in use in releases after 22.10.2022
+#if F_CPU == 8000000
+	CLKPR = _BV(CLKPCE);
+	CLKPR = _BV(CLKPS0);
+#endif
+        // OPTIONAL: Attach/Implement a power led on Digital 11 pin (B5).
+	// turn on power LED
+        DDRB  |= _BV(PB5);
+        PORTB |= _BV(PB5);
+
+/* LCD keypad shield */
+
+//Enable ADC
+//https://www.avrfreaks.net/forum/tut-c-newbies-guide-avr-adc?page=all
+//Newbie's Guide to the AVR ADC
+//(c) Ken Worster
+//------- Adapted code example 2 -----------
+   ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Set ADC prescalar to 128 - 125KHz sample rate @ 16MHz
+   ADMUX |= (1 << REFS0); // Set ADC reference to AVCC = 5V
+   ADMUX |= (1 << ADLAR); // Left adjust ADC result to allow easy 8 bit reading
+
+   // No MUX values needed to be changed to use ADC0 = PF0
+
+   ADCSRA |= (1 << ADSC);  // Set ADC to Free-Running Mode
+   ADCSRA |= (1 << ADEN);  // Enable ADC
+   ADCSRA |= (1 << ADEN);  // Enable ADC
+   ADCSRA |= (1 << ADIE);  // Enable ADC Interrupt
+   sei();  // Enable Global Interrupts
+   ADCSRA |= (1 << ADSC);  // Start A2D Conversions
+
+}
+
+
+
+
 
 #elif CONFIG_HARDWARE_VARIANT == 10
 /* ---------- Hardware configuration: evo2 ---------- */

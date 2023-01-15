@@ -1157,8 +1157,10 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
           partition[path->part].fop = &d64ops;
         }
 
+
 #ifdef CONFIG_LCD_DISPLAY
       DS_CD((char *)dent->pvt.fat.realname);
+      ustrcpy(restore_display_data, dent->pvt.fat.realname);
 #endif
 
       return 0;
@@ -1565,6 +1567,9 @@ uint8_t image_unmount(uint8_t part) {
   DS_CD((char*)ops_scratch);
   ///DS_TITLE;
 #endif
+
+//---
+
 
   if (display_found) {
     /* Send current path to display */

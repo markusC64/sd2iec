@@ -37,6 +37,7 @@
 #endif
 
 dh_t    matchdh;
+uint8_t restore_display_data[33]; //by Poldi
 uint8_t ops_scratch[33];
 
 /// One additional buffer structure for channel 15
@@ -226,6 +227,7 @@ void free_buffer(buffer_t *buffer) {
 #ifdef CONFIG_LCD_DISPLAY
   if (active_buffers == 0 && !(led_state & LED_ERROR)) DS_READY(device_address);
 #endif
+
 }
 
 /**

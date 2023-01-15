@@ -124,6 +124,13 @@ static const PROGMEM uint8_t messages[] = {
     'B','U','F','F','E','R',11,'S','M','A','L','L',
   EC(79),
     'I','M','A','G','E',' ',0,' ','I','N','V','A','L','I','D',
+  EC(95),
+    'N','O',' ','L','C','D',
+  EC(96),
+    'H','D','4','4','7','8','0',
+  EC(97),
+
+    'S','T','7','0','3','6',
   EC(98),
     'U','N','K','N','O','W','N',' ','D','R','I','V','E','C','O','D','E',
   EC(99),
@@ -268,17 +275,20 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
     led_state |= LED_ERROR;
 
 #ifdef CONFIG_LCD_DISPLAY
+       ready_msg_only_once = 0;
     DS_CLRLINE(1);
     DS_PUTSP("E:");
     DS_PUTS((char *) error_buffer);
 #endif
-
   } else {
     led_state &= (uint8_t)~LED_ERROR;
     set_error_led(0);
 
 #ifdef CONFIG_LCD_DISPLAY
+if (ready_msg_only_once == 0) {
+    ready_msg_only_once = 1;
     DS_READY(device_address);
+    }
 #endif
   }
   buffers[ERRORBUFFER_IDX].lastused = msg - error_buffer;

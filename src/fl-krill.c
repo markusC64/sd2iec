@@ -46,8 +46,7 @@
 #include "ustring.h"
 #include "wrapops.h"
 #include "fastloader.h"
-
-
+#ifdef ARM_ONLY_CODE
 /* magic string used in M-E commands of >= r192 */
 #define KRILL_MAGIC PSTR("KRILL")
 
@@ -1183,3 +1182,5 @@ exit:
 
   return true;
 }
+#endif
+

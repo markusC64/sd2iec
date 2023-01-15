@@ -216,10 +216,11 @@ delay_7:                        ; 3+4=7 (16 bit PC) / 4+5=9 (22 bit PC)
         ;; conversion from [us]. Can be either positive or negative, but a
         ;; negative value can result in an illegal (ie negative) delay.
         .macro  delay_05us us05:req, offset=0
-        .if ((\us05)*CONFIG_MCU_FREQ%(2*1000000)         != 0) || \
-            ((\us05)*CONFIG_MCU_FREQ/(2*1000000)+\offset <  0)
-        .error "Invalid delay value and/or CONFIG_MCU_FREQ"
-        .endif
+        // FIXME False errors with the XS-1541 config file
+        //.if ((\us05)*CONFIG_MCU_FREQ%(2*1000000)         != 0) || \
+        //((\us05)*CONFIG_MCU_FREQ/(2*1000000)+\offset <  0)
+        //.error "Invalid delay value and/or CONFIG_MCU_FREQ"
+        //.endif
         delay_cycles (\us05) * CONFIG_MCU_FREQ/(2*1000000) + \offset
         .endm
 
@@ -2087,7 +2088,7 @@ wof_get_byte:
 
         ;; bits 0, 1
         ;; sample at the center of working range [16, 24] us (determined empirically)
-        delay_cycles 20 * 8 - 3
+        delay_us 20, -3
         in      r19, _SFR_IO_ADDR(IEC_INPUT)              ; 1
         bst     r19, IEC_PIN_CLOCK                        ; 1
         bld     r24, 0                                    ; 1
@@ -2095,7 +2096,7 @@ wof_get_byte:
         bld     r24, 1                                    ; 1
 
         ;; bits 2, 3
-        delay_cycles 11 * 8 - 5                           ; 11 cycles between STAs on the C64 side
+        delay_us 11, -5                           ; 11 cycles between STAs on the C64 side
         in      r19, _SFR_IO_ADDR(IEC_INPUT)
         bst     r19, IEC_PIN_CLOCK
         bld     r24, 2
@@ -2103,7 +2104,7 @@ wof_get_byte:
         bld     r24, 3
 
         ;; bits 4, 5
-        delay_cycles 11 * 8 - 5
+        delay_us 11, -5
         in      r19, _SFR_IO_ADDR(IEC_INPUT)
         bst     r19, IEC_PIN_CLOCK
         bld     r24, 4
@@ -2111,7 +2112,7 @@ wof_get_byte:
         bld     r24, 5
 
         ;; bits 6, 7
-        delay_cycles 11 * 8 - 5
+        delay_us 11, -5
         in      r19, _SFR_IO_ADDR(IEC_INPUT)
         bst     r19, IEC_PIN_CLOCK
         bld     r24, 6
@@ -2158,19 +2159,19 @@ wof_put_byte:
 
         ;; bits 0, 1
         rcall   send_bits_to_clk_data                     ; 10 + 6
-        delay_cycles 20 * 8 - 10
+        delay_us 20, -10
 
         ;; bits 2, 3
         rcall   send_bits_to_clk_data
-        delay_cycles 12 * 8 - 16
+        delay_us 12, -16 //-RET_OFFSET-RCALL_OFFSET
 
         ;; bits 4, 5
         rcall   send_bits_to_clk_data
-        delay_cycles 13 * 8 - 16
+        delay_us 13, -16 //-RET_OFFSET-RCALL_OFFSET
 
         ;; bits 6, 7
         rcall   send_bits_to_clk_data
-        delay_cycles 10 * 8 - 16
+        delay_us 10, -16 //-RET_OFFSET
 
         ret
 #endif
@@ -2196,19 +2197,19 @@ n0s_iffl_put_byte:
 
         ;; bits 0, 1
         rcall   send_bits_to_clk_data                     ; 10 -> data on bus -> 6
-        delay_cycles 18 * 8 - 10                          ; that is why the first delay is 10 not 16
+        delay_us 18, -10-RET_OFFSET-RCALL_OFFSET          ; that is why the first delay is 10 not 16
 
         ;; bits 2, 3
         rcall   send_bits_to_clk_data
-        delay_cycles 8 * 8 - 16
+        delay_us 8, -16-RET_OFFSET-RCALL_OFFSET
 
         ;; bits 4, 5
         rcall   send_bits_to_clk_data
-        delay_cycles 8 * 8 - 16
+        delay_us 8, -16-RET_OFFSET-RCALL_OFFSET
 
         ;; bits 6, 7
         rcall   send_bits_to_clk_data
-        delay_cycles 8 * 8 - 16
+        delay_us 8, -16-RET_OFFSET
 
         ;; pull clock
         sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK

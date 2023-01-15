@@ -1,5 +1,5 @@
 /* sd2iec - SD/MMC to Commodore serial bus interface/controller
-   Copyright (C) 2007-2017  Ingo Korb <ingo@akana.de>
+   Copyright (C) 2007-2023  Ingo Korb <ingo@akana.de>
 
    Inspired by MMC2IEC by Lars Pontoppidan et al.
 
@@ -54,8 +54,8 @@
 #include "utils.h"
 #include "wrapops.h"
 #include "doscmd.h"
-
 #ifdef CONFIG_LCD_DISPLAY
+#include "buffers.h"
 #include "display_lcd.h"
 #endif
 
@@ -726,10 +726,6 @@ void do_chdir(uint8_t *parsestr) {
   if (parse_path(parsestr, &path, &name, 1))
     return;
 
-#ifdef CONFIG_LCD_DISPLAY
-  if (fs_mode == 0) DS_CD((char *)name);
-#endif
-
   /* clear '*' file */
   previous_file_dirent.name[0] = 0;
 
@@ -1101,6 +1097,16 @@ static void parse_changepart(void) {
   display_current_part(current_part);
 
   set_error_ts(ERROR_PARTITION_SELECTED, part+1, 0);
+
+// by Poldi
+// Display partiom number if partiton is changed
+#ifdef CONFIG_LCD_DISPLAY
+     char Buffer4part[3];
+    DS_TITLE;
+    DS_SHOWP(1,"Partion: ");
+    utoa((part+1),Buffer4part,10);
+    DS_PUTS((char *) Buffer4part);
+#endif
 }
 
 
@@ -2069,6 +2075,59 @@ static void parse_timeread(void) {
     error_buffer[23] = 13;
     break;
 
+//------- by Poldi -----------------------------------
+#ifdef CONFIG_LCD_DISPLAY
+  case 'L': /* ISO 8601 format send to LCD */
+
+//     DS_CLR;
+     lcd_gotoxy(0,0);
+     char Buffer4RTC[4];
+     register uint8_t i;
+    for (i=0;i<10;i++) {
+    //Print RTC: yyyy-mm-dd
+    lcd_gotoxy(0,0);
+    DS_PUTSP("RTC: ");
+    utoa((time.tm_year+1900),Buffer4RTC,10);
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP("-");
+    utoa((time.tm_mon+1),Buffer4RTC,10);
+    if (time.tm_mon < 9) DS_PUTSP("0");
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP("-");
+    utoa(time.tm_mday,Buffer4RTC,10);
+    if (time.tm_mday < 10) DS_PUTSP("0"); 
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP("     ");
+// New line DOW. hh:mm:ss
+    lcd_gotoxy(0,1);
+    memcpy_P(Buffer4RTC, downames + 4*time.tm_wday, 3);
+    DS_PUTS((char *) Buffer4RTC);
+    lcd_gotoxy(3,1);
+    DS_PUTSP(". ");
+    utoa(time.tm_hour,Buffer4RTC,10);
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP(":");
+    utoa(time.tm_min,Buffer4RTC,10);
+    if (time.tm_min < 10) DS_PUTSP("0");
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP(":");
+    utoa(time.tm_sec,Buffer4RTC,10);
+    if (time.tm_sec < 10) DS_PUTSP("0");
+    DS_PUTS((char *) Buffer4RTC);
+    DS_PUTSP("     ");
+  read_rtc(&time);
+  }
+ if (ustrlen(restore_display_data) == 0) {
+    DS_TITLE;
+    }
+    else {
+    DS_CD((char *)restore_display_data);
+    }
+    DS_READY(device_address);
+  break;
+#endif
+//---------------------------------------------------
+
   default: /* Unknown format */
     set_error(ERROR_SYNTAX_UNKNOWN);
     break;
@@ -2090,7 +2149,7 @@ static void parse_timewrite(void) {
 
   switch (command_buffer[3]) {
   case 'A': /* ASCII format */
-    if (command_length < 27) { // Allow dropping the AM/PM marker for 24h format
+    if (command_length < 26) { // Allow dropping the AM/PM marker for 24h format - 27 changed to 26 by Poldi
       set_error(ERROR_SYNTAX_UNABLE);
       return;
     }
@@ -2336,6 +2395,36 @@ static void parse_xcommand(void) {
     {
       DS_CTRL((char *)str);
     }
+// Restore directory or image name on the LCD screen, Poldi 11.1.2022
+    if (command_buffer[2]=='R')
+    {
+           DS_CD((char *)restore_display_data);
+           DS_READY(device_address);
+    }
+// LCD type ?, Poldi 13.1.2023
+    if (command_buffer[2]=='L')
+    {
+    if (lcd_controller_type()==0) {
+    set_error(ERROR_NO_LCD);
+    break;
+    }
+    if (lcd_controller_type()==4) {
+    set_error(ERROR_HD44780);
+    DS_TITLE;
+    DS_SHOWP(1,"with HD44780");
+    break;
+    }
+    else {
+    set_error(ERROR_ST7036);
+    DS_TITLE;
+    DS_SHOWP(1,"with ST7036");
+
+    break;
+    }
+
+    }
+
+
     break;
 
   case 'A':
@@ -2353,6 +2442,11 @@ static void parse_xcommand(void) {
   case 'X':
     /* eee */
     DS_EEE;
+    break;
+
+  case 'B':
+    /* Show the Boot Logo, by Poldi */
+    DS_Logo;
     break;
 
   case 'C':
@@ -2373,6 +2467,7 @@ static void parse_xcommand(void) {
     }
     break;
 #endif
+
 
   case 'E':
     /* Change file extension mode */

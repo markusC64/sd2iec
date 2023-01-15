@@ -64,7 +64,7 @@ uint8_t epyxcart_send_byte(uint8_t byte) {
   delay_us(20);
 
  exit:
-  enable_interrupts();
+  disable_interrupts();
   llfl_teardown();
   return result;
 }

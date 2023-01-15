@@ -1,0 +1,300 @@
+# sd2iec - SD/MMC to Commodore serial bus interface/controller
+# Copyright (C) 2007-2022  Ingo Korb <ingo@akana.de> and contributors
+#
+# Inspiration and low-level SD/MMC access based on code from MMC2IEC
+#   by Lars Pontoppidan et al., see sdcard.c|h and config.h.
+#
+#  FAT filesystem access based on code from ChaN, see tff.c|h.
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; version 2 of the License only.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+# Makefbin (from Make full binaries) is a script for automatically compile
+# multiple SD2IEC LCD configurations at once and produced binary files that
+# include information about confifuration files. This produce slighty bigger
+# (only for few bytes) binary files than previous Makebin script.
+#
+# Last update: 20.12.2022
+
+# Warning&quit if /bin directory exists.
+cd bin
+if [ $? -eq 0 ]; then 
+cd ..
+echo
+
+echo "WARNING!"
+echo
+echo "/bin directory exists. Please rename or delete existing /bin directory,"
+echo "before run Makefbin to build binary files for SD2IEC variants."
+exit
+fi
+
+#Create folder bin
+
+mkdir bin
+
+#Definr counters
+declare -i avr_var=0 avr_build=0 arm_var=0 arm_build=0 esp_var=0 esp_build=0 
+
+# Compile...
+# AVR section
+# Number of different HW versions with 8 bits AVR chips: 11
+
+#HW variant 2
+
+((++avr_var))
+make CONFIG=configs/config-sw1
+if [ $? -eq 0 ]; then 
+mkdir bin/sw1
+cp obj-m1284p-sw1/sd2iec.bin bin/SW1/sd2iec.bin
+cp obj-m1284p-sw1/sd2iec.hex bin/SW1/sd2iec.hex
+echo "HW variant: Shadowolf 1" >> bin/SW1/Readme.txt
+echo "LCD support: YES" >> bin/SW1/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1284p-sw1
+rm -r .dep
+
+#HW variant 3
+
+((++avr_var))
+make CONFIG=configs/config-larsp
+if [ $? -eq 0 ]; then 
+mkdir bin/larsp
+cp obj-m1284p-larsp/sd2iec.bin bin/larsp/sd2iec.bin
+cp obj-m1284p-larsp/sd2iec.hex bin/larsp/sd2iec.hex
+echo "HW variant: LarsP" >> bin/larsp/Readme.txt
+echo "LCD support: YES" >> bin/larsp/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1284p-larsp
+rm -r .dep
+
+#HW variant 4
+
+((++avr_var))
+make CONFIG=configs/config-uIEC
+if [ $? -eq 0 ]; then 
+mkdir bin/uIEC
+cp obj-m1281-uIEC/sd2iec.bin bin/uIEC/sd2iec.bin
+cp obj-m1281-uIEC/sd2iec.hex bin/uIEC/sd2iec.hex
+echo "HW variant: uIEC" >> bin/uIEC/Readme.txt
+echo "LCD support: NO" >> bin/uIEC/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1281-uIEC
+rm -r .dep
+
+#HW variant 5
+
+((++avr_var))
+make CONFIG=configs/config-sw2
+if [ $? -eq 0 ]; then 
+mkdir bin/sw2
+cp obj-m1284p-sw2/sd2iec.bin bin/sw2/sd2iec.bin
+cp obj-m1284p-sw2/sd2iec.hex bin/sw2/sd2iec.hex
+echo "HW variant: Shadowolf 2" >> bin/SW2/Readme.txt
+echo "LCD support: YES" >> bin/SW2/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1284p-sw2
+rm -r .dep
+
+#HW variant 6
+
+((++avr_var))
+make CONFIG=configs/config-alnwlsn
+if [ $? -eq 0 ]; then 
+mkdir bin/alnwlsn
+cp obj-m644p-alnwlsn/sd2iec.bin bin/alnwlsn/sd2iec.bin
+cp obj-m644p-alnwlsn/sd2iec.hex bin/alnwlsn/sd2iec.hex
+echo "HW variant: alnwlsn" >> bin/alnwlsn/Readme.txt
+echo "LCD support: NO" >> bin/alnwlsn/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m644p-alnwlsn
+rm -r .dep
+
+#HW variant 7
+
+((++avr_var))
+make CONFIG=configs/config-uIEC3
+if [ $? -eq 0 ]; then 
+mkdir bin/uIEC3
+cp obj-m1281-uIEC3/sd2iec.bin bin/uIEC3/sd2iec.bin
+cp obj-m1281-uIEC3/sd2iec.hex bin/uIEC3/sd2iec.hex
+echo "HW variant: uIEC3" >> bin/uIEC3/Readme.txt
+echo "LCD support: NO" >> bin/uIEC3/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1281-uIEC3
+rm -r .dep
+
+#HW variant 8
+
+((++avr_var))
+make CONFIG=configs/config-petSD
+if [ $? -eq 0 ]; then 
+mkdir bin/petSD
+cp obj-m1284p-petSD/sd2iec.bin bin/petSD/sd2iec.bin
+cp obj-m1284p-petSD/sd2iec.hex bin/petSD/sd2iec.hex
+echo "HW variant: petSD" >> bin/petSD/Readme.txt
+echo "LCD support: NO" >> bin/petSD/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1284p-petSD
+rm -r .dep
+
+#HW variant 9
+
+((++avr_var))
+make CONFIG=configs/config-XS-1541
+if [ $? -eq 0 ]; then 
+mkdir bin/XS-1541
+cp obj-m644p-XS-1541/sd2iec.bin bin/XS-1541/sd2iec.bin
+cp obj-m644p-XS-1541/sd2iec.hex bin/XS-1541/sd2iec.hex
+echo "HW variant: XS-1541" >> bin/XS-1541/Readme.txt
+echo "LCD support: NO" >> bin/XS-1541/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m644p-XS-1541
+rm -r .dep
+
+#HW variant 10
+
+((++avr_var))
+make CONFIG=configs/config-evo2
+if [ $? -eq 0 ]; then 
+mkdir bin/evo2
+cp obj-m1284p-evo2/sd2iec.bin bin/evo2/sd2iec.bin
+cp obj-m1284p-evo2/sd2iec.hex bin/evo2/sd2iec.hex
+echo "HW variant: Evo2" >> bin/evo2/Readme.txt
+echo "LCD support: YES" >> bin/evo2/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1284p-evo2
+rm -r .dep
+
+#HW variant 11 (Arduino 2560 + LCD)
+
+((++avr_var))
+make CONFIG=configs/config-Arduino-lcd
+if [ $? -eq 0 ]; then 
+mkdir bin/Arduino2560
+cp obj-m2560-Arduino-lcd/sd2iec.bin bin/Arduino2560/sd2iec.bin
+cp obj-m2560-Arduino-lcd/sd2iec.hex bin/Arduino2560/sd2iec.hex
+echo "HW variant: Arduino Mega 2560" >> bin/Arduino2560/Readme.txt
+echo "LCD support: YES" >> bin/Arduino2560/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m2560-Arduino-lcd
+rm -r .dep
+
+#HW variant 11 Arduino Mega 1280 + LCD
+
+((++avr_var))
+make CONFIG=configs/config-Arduino1280-lcd
+if [ $? -eq 0 ]; then 
+mkdir bin/Arduino1280
+cp obj-m1280-Arduino1280-lcd/sd2iec.bin bin/Arduino1280/sd2iec.bin
+cp obj-m1280-Arduino1280-lcd/sd2iec.hex bin/Arduino1280/sd2iec.hex
+echo "HW variant: Arduino Mega 1280" >> bin/Arduino1280/Readme.txt
+echo "LCD support: YES" >> bin/Arduino1280/Readme.txt
+((++avr_build))
+fi
+rm -r obj-m1280-Arduino1280-lcd
+rm -r .dep
+
+# ARM section
+# Number of different HW versions with 32 bits ARM chips: 2
+
+#HW variant 100
+
+((++arm_var))
+make CONFIG=configs/config-mbed
+if [ $? -eq 0 ]; then 
+mkdir bin/mbed
+cp obj-lpc1768-mbed/sd2iec.bin bin/mbed/sd2iec.bin
+cp obj-lpc1768-mbed/sd2iec.hex bin/mbed/sd2iec.hex
+echo "HW variant: mbed" >> bin/mbed/Readme.txt
+echo "LCD support: NO" >> bin/mbed/Readme.txt
+((++arm_build))
+fi
+rm -r obj-lpc1768-mbed
+rm -r .dep
+
+#HW variant 101
+
+((++arm_var))
+make CONFIG=configs/config-arm2iec1
+if [ $? -eq 0 ]; then 
+mkdir bin/arm2iec1
+cp obj-lpc1768-arm2iec1/sd2iec.bin bin/arm2iec1/sd2iec.bin
+cp obj-lpc1768-arm2iec1/sd2iec.hex bin/arm2iec1/sd2iec.hex
+echo "HW variant: Arm2iec1" >> bin/arm2iec1/Readme.txt
+echo "LCD support: NO" >> bin/arm2iec1/Readme.txt
+((++arm_build))
+fi
+rm -r obj-lpc1768-arm2iec1
+rm -r .dep
+
+# Espressif ESP8266 section
+# Number of different HW versions with 32 bits ESP chips: 1
+#HW variant 111
+
+((++esp_var))
+make CONFIG=configs/config-esp8266
+if [ $? -eq 0 ]; then 
+mkdir bin/esp8266
+cp obj-esp8266-esp/sd2iec.bin bin/esp8266/sd2iec.bin
+cp obj-esp8266-esp/sd2iec.hex bin/esp8266/sd2iec.hex
+echo "HW variant: ESP8266" >> bin/esp8266/Readme.txt
+echo "LCD support: NO" >> bin/esp8266/Readme.txt
+((++esp_build))
+fi
+rm -r obj-esp8266-esp
+rm -r .dep
+
+# Delete /bin folder is there is no binary files
+# othervise create a summary.txt file
+if [ -z "$(ls -A bin)" ]; then
+rm -r bin
+echo
+echo "No binary files was created!"
+echo
+else
+echo "Summary" >> bin/Summary.txt
+echo >> bin/Summary.txt
+echo "Date & time of compilation: " $(date) >> bin/Summary.txt
+echo >> bin/Summary.txt
+echo "SD2IEC" >> bin/Summary.txt
+echo "AVR variant(s)   " $avr_var " binary build(s)" $avr_build >> bin/Summary.txt
+echo "ARM variant(s)    " $arm_var " binary build(s) " $arm_build  >> bin/Summary.txt
+echo "ESP variant(s)    " $esp_var " binary build(s) " $esp_build  >> bin/Summary.txt
+echo "----------------------------------------" >> bin/Summary.txt
+echo "Total variant(s) " $((avr_var+arm_var+esp_var)) " binary build(s)" $((arm_build+avr_build+esp_build)) >> bin/Summary.txt
+fi
+
+# Summary on screen
+echo
+echo "Summary"
+echo
+echo "Date & time of compilation: " $(date)
+echo
+echo "SD2IEC"
+echo "AVR variant(s)   " $avr_var " binary build(s)" $avr_build
+echo "ARM variant(s)    " $arm_var " binary build(s) " $arm_build 
+echo "ESP variant(s)    " $esp_var " binary build(s) " $esp_build 
+echo "----------------------------------------"
+echo "Total variant(s) " $((avr_var+arm_var+esp_var)) " binary build(s)" $((arm_build+avr_build+esp_build))
+
