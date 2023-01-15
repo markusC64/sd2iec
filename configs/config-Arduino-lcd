@@ -1,0 +1,115 @@
+# This may not look like it, but it's a -*- makefile -*-
+#
+# sd2iec - SD/MMC to Commodore serial bus interface/controller
+# Copyright (C) 2007-2022  Ingo Korb <ingo@akana.de> and contributors
+#
+# Inspiration and low-level SD/MMC access based on code from MMC2IEC
+#   by Lars Pontoppidan et al., see sdcard.c|h and config.h.
+#
+#  FAT filesystem access based on code from ChaN, see tff.c|h.
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; version 2 of the License only.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+# sd2iec configuration for Arduino Mega 2560 + LCD keypad shield
+#
+#
+# This file is included in the main sd2iec Makefile and also parsed
+# into autoconf.h.
+
+#Hardware settings
+CONFIG_ARCH=avr
+CONFIG_MCU=atmega2560
+CONFIG_HARDWARE_VARIANT=11
+CONFIG_HARDWARE_NAME=sd2iec
+# In this release 8 MHz (and using the prescaler) in no more mandatory
+CONFIG_MCU_FREQ=16000000
+
+
+# Use the -relax parameter when linking?
+# Passing -O9 and -relax to the linker saves ~650 bytes of flash,
+# but the option is broken in certain binutils versions.
+# (known troublemakers: binutils 2.17, 2.18 seems fine)
+CONFIG_LINKER_RELAX=y
+
+
+# We don't provide boot loader. Use the original arduino one, we don't want to mess that up.
+CONFIG_BOOTLOADER=n
+#CONFIG_BOOT_DEVID=0x5053524c
+CONFIG_COMMAND_CHANNEL_DUMP=y
+
+
+# Fastloaders
+CONFIG_LOADER_TURBODISK=y
+CONFIG_LOADER_FC3=y
+CONFIG_LOADER_DREAMLOAD=y
+CONFIG_LOADER_ULOAD3=y
+CONFIG_LOADER_GIJOE=y
+CONFIG_LOADER_EPYXCART=y
+CONFIG_LOADER_GEOS=y
+CONFIG_LOADER_WHEELS=y
+CONFIG_LOADER_NIPPON=y
+CONFIG_LOADER_AR6=y
+CONFIG_LOADER_ELOAD1=y
+CONFIG_LOADER_MMZAK=y
+CONFIG_LOADER_SAMSJOURNEY=y
+CONFIG_LOADER_N0SDOS=y
+CONFIG_LOADER_ANOTHERWORLD=y
+CONFIG_LOADER_WINGSOFFURY=y
+CONFIG_LOADER_N0S_IFFL=y
+CONFIG_LOADER_ULTRABOOT=y
+CONFIG_LOADER_HYPRALOAD=y
+CONFIG_LOADER_KRILL=y
+
+# The Krill loader required bus silence
+CONFIG_BUS_SILENCE_REQ=y
+
+
+#SD card settings
+CONFIG_SD_AUTO_RETRIES=10
+CONFIG_SD_DATACRC=y
+CONFIG_ERROR_BUFFER_SIZE=46
+CONFIG_COMMAND_BUFFER_SIZE=120
+CONFIG_BUFFER_COUNT=6
+
+#EEPROM FS settings
+CONFIG_HAVE_EEPROMFS=y
+CONFIG_EEPROM_SIZE=512
+CONFIG_EEPROM_OFFSET=512
+CONFIG_MAX_PARTITIONS=4
+
+#Display settings
+CONFIG_LCD_DISPLAY=y
+CONFIG_REMOTE_DISPLAY=n
+CONFIG_DISPLAY_BUFFER_SIZE=40
+
+#Debug via USB ?
+CONFIG_UART_DEBUG=y
+# Baud rate of the UART, not used if CONFIG_UART_DEBUG is disabled
+CONFIG_UART_BAUDRATE=19200
+# log2 of the UART buffer size, i.e. 6 for 64, 7 for 128, 8 for 256 etc.
+# Not used if CONFIG_UART_DEBUG is disabled
+CONFIG_UART_BUF_SHIFT=6
+
+#IEC and other stuff
+CONFIG_HAVE_IEC=y
+CONFIG_M2I=y
+
+# There is not room in RAM for a P00CACHE.
+CONFIG_P00CACHE=n
+#CONFIG_P00CACHE_SIZE=4000
+
+
+# The RTC is optional, but can be provided as a shield (DS1307 compatible).
+CONFIG_RTC_DSRTC=y
+CONFIG_RTC_PCF8583=n
