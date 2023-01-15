@@ -39,9 +39,11 @@
 #include "progmem.h"
 #include "timer.h"
 #include "fastloader.h"
-
+#ifdef __ets__
 fastloaderid_t detected_loader;
-
+#else
+uint8_t detected_loader;
+#endif
 /* Function pointer to the current byte transmit/receive functions */
 /* (to simplify loaders with multiple variations of these)         */
 uint8_t (*fast_send_byte)(uint8_t byte);

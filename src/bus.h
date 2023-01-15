@@ -30,6 +30,10 @@ extern uint8_t device_address;
 
 void bus_interface_init(void);
 void bus_init(void);
+#ifdef __ets__
+void bus_mainloop(void);
+#else
 void __attribute__((noreturn)) bus_mainloop(void);
+#endif
 
 #endif
