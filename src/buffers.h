@@ -135,7 +135,7 @@ typedef struct buffer_s {
 
 extern dh_t matchdh;         /// Directory handle used in file matching
 extern buffer_t buffers[];   /// Simplifies access to the error buffer length
-
+extern uint8_t restore_display_data[33]; /// space for restore directory or image name on LCD screen by Poldi
 extern uint8_t ops_scratch[33]; /// scratch space for use in fileops code
 
 /* Initializes the buffer structures */

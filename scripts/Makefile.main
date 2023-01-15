@@ -324,6 +324,8 @@ $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(Q)$(OBJCOPY) -O binary -R .eeprom $< $@
 	$(E) "  CRCGEN $@"
 	$(Q)$(CRCGEN) $@ $(BINARY_LENGTH) $(CONFIG_BOOT_DEVID) $(BOOT_VERSION)
+	$(E) "  COPY   sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin"
+	$(Q)$(COPY) $@ $(OBJDIR)/sd2iec-$(CONFIGSUFFIX)-$(PROGRAMVERSION).bin
 else
 $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
 	$(E) "  BIN    $@"

@@ -27,36 +27,47 @@ MCU    := $(CONFIG_MCU)
 CRCGEN := scripts/avr/crcgen-avr.pl
 
 ifeq ($(MCU),atmega128)
-  BINARY_LENGTH = 0x1f000
+	BINARY_LENGTH = 0x1f000
 #  EFUSE = 0xff
 #  HFUSE = 0x91
 #  LFUSE = 0xaf
+else ifeq ($(MCU),atmega1280)
+	BINARY_LENGTH = 0x1f000
+	BOOTLDRSIZE = 0x0800
+	EFUSE = 0xff
+	HFUSE = 0xd2
+	LFUSE = 0xfc
 else ifeq ($(MCU),atmega1281)
-  BINARY_LENGTH = 0x1f000
-  BOOTLDRSIZE = 0x0800
-  EFUSE = 0xff
-  HFUSE = 0xd2
-  LFUSE = 0xfc
+	BINARY_LENGTH = 0x1f000
+	BOOTLDRSIZE = 0x0800
+	EFUSE = 0xff
+	HFUSE = 0xd2
+	LFUSE = 0xfc
+else ifeq ($(MCU),atmega2560)
+	BINARY_LENGTH = 0x3f000
+	EFUSE = 0xfd
+	HFUSE = 0xd8
+	LFUSE = 0xff
 else ifeq ($(MCU),atmega2561)
-  BINARY_LENGTH = 0x3f000
-  EFUSE = 0xfd
-  HFUSE = 0x93
-  LFUSE = 0xef
+	BINARY_LENGTH = 0x3f000
+	EFUSE = 0xfd
+	HFUSE = 0x93
+	LFUSE = 0xef
 else ifeq ($(MCU),atmega644)
-  BINARY_LENGTH = 0xf000
-  EFUSE = 0xfd
-  HFUSE = 0x91
-  LFUSE = 0xef
+	BINARY_LENGTH = 0xf000
+	EFUSE = 0xfd
+	HFUSE = 0x93
+	LFUSE = 0xef
 else ifeq ($(MCU),atmega644p)
-  BINARY_LENGTH = 0xf000
-  EFUSE = 0xfd
-  HFUSE = 0x91
-  LFUSE = 0xef
+	BINARY_LENGTH = 0xf000
+	EFUSE = 0xfd
+	HFUSE = 0x91
+	LFUSE = 0xef
 else ifeq ($(MCU),atmega1284p)
-  BINARY_LENGTH = 0x1f000
-  EFUSE = 0xfd
-  HFUSE = 0xd2
-  LFUSE = 0xe7
+	BINARY_LENGTH = 0x1f000
+	EFUSE = 0xfd
+	HFUSE = 0xd2
+	LFUSE = 0xe7
 else
 .PHONY: nochip
 nochip:

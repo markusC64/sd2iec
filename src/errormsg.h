@@ -77,6 +77,9 @@ uint8_t set_ok_message(buffer_t *buf);
 #define ERROR_PARTITION_ILLEGAL  77
 #define ERROR_BUFFER_TOO_SMALL   78
 #define ERROR_IMAGE_INVALID      79
+#define ERROR_NO_LCD             95
+#define ERROR_HD44780            96
+#define ERROR_ST7036             97
 #define ERROR_UNKNOWN_DRIVECODE  98
 #define ERROR_CLOCK_UNSTABLE     99
 
