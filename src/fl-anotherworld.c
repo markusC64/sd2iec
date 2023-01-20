@@ -93,6 +93,7 @@ static void read_bam(void) {
   * @b  : hi byte of destination address
   */
 static void copy_page(buffer_t *buf[], uint8_t a, uint8_t b) {
+  (void)a;
   // We should only expect b between 4 and 7, bail out otherwise.
   // Also, 7 is pointless (copy to itself)
   if (b < 4 || b > 6) {
@@ -132,6 +133,7 @@ static void read_sector_chain(buffer_t *buf[], uint8_t a, uint8_t b) {
   * @b  : hi byte of page addr
   */
 static void upload_page(buffer_t *buf[], uint8_t a, uint8_t b) {
+  (void)a;
   uint8_t i = 0;
   // We should only expect b between 4 and 7, bail out otherwise
   if (b < 4 || b > 7) {
@@ -151,6 +153,8 @@ static void upload_page(buffer_t *buf[], uint8_t a, uint8_t b) {
   * @b  : hi byte of page addr
   */
 static void download_page(buffer_t *buf[], uint8_t a, uint8_t b) {
+  (void)a;
+  (void)b;
   uint8_t i = 0;
   do {
     buf[3]->data[i] = get_byte();

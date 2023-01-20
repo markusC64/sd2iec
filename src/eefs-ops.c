@@ -414,11 +414,17 @@ static void eefs_rename(path_t *path, cbmdirent_t *oldname, uint8_t *newname) {
 
 static void eefs_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
 {
+   (void)path;
+   (void)name;
+   (void)attr;
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
 static void eefs_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
 {
+   (void)path;
+   (void)newname;
+   (void)newid;
    set_error(ERROR_SYNTAX_UNABLE);
 }
 

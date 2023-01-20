@@ -1615,7 +1615,7 @@ uint8_t image_read(uint8_t part, LONG offset, void *buffer, uint16_t bytes) {
   FRESULT res;
   UINT bytesread;
 
-  if (offset != (DWORD)-1) {
+  if (offset != (LONG)-1) {
     res = f_lseek(&partition[part].imagehandle, offset);
     if (res != FR_OK) {
       parse_error(res,1);
@@ -1656,7 +1656,7 @@ uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uin
      return 2;
   }
 
-  if (offset != (DWORD)-1) {
+  if (offset != (LONG)-1) {
     res = f_lseek(&partition[part].imagehandle, offset);
     if (res != FR_OK) {
       parse_error(res,0);
@@ -1849,6 +1849,9 @@ static void fat_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
 
 static void fat_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
 {
+   (void)path;
+   (void)newname;
+   (void)newid;
    set_error(ERROR_SYNTAX_UNABLE);
 }
 

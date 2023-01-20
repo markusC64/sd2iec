@@ -442,16 +442,25 @@ static void m2i_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
 
 /* Dummy function for format */
 static void format_dummy(path_t *path, uint8_t *name, uint8_t *id) {
+  (void)path;
+  (void)name;
+  (void)id;
   set_error(ERROR_SYNTAX_UNKNOWN);
 }
 
 static void m2i_set_attrib(path_t *path, cbmdirent_t *name, uint8_t attr)
 {
+  (void)path;
+  (void)name;
+  (void)attr;
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
 static void m2i_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
 {
+  (void)path;
+  (void)newname;
+  (void)newid;
    set_error(ERROR_SYNTAX_UNABLE);
 }
 

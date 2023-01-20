@@ -324,6 +324,7 @@ static void send_bitpair_r58pre(uint8_t *b, uint8_t i) {
 }
 
 static void send_bitpair(uint8_t *b, uint8_t i) {
+  (void)i;
   set_clock(*b&1);
   set_data(*b&2);
   *b >>= 2;
@@ -786,6 +787,7 @@ abort:
 }
 
 static uint16_t cc_read_length(session_t *s) {
+  (void)s;
   uint8_t  i;
   uint16_t w;
 
@@ -1034,7 +1036,7 @@ static uint8_t custom_code_handler(session_t *s) {
 
     delay_us(2);
 
-    for (i = 0; i < len; i++) {
+    for (i = 0; (int16_t) i < len; i++) {
       b = fast_get_byte();
       if (IEC_ATN)
         return 1;
@@ -1065,7 +1067,7 @@ static uint8_t custom_code_handler(session_t *s) {
         /* stop early so the handler can read its parameters */
         len -= pgm_read_byte(&ptr->params);
 
-        if (len < i) /* should not happen */
+        if (len < (int16_t) i) /* should not happen */
           return 1;
       }
     }
