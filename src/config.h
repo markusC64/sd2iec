@@ -88,6 +88,33 @@ static inline void board_init(void) {
 #    define PARALLEL_ENABLED
 #  endif
 #endif
+//-----add by Poldi
+
+#if defined(CONFIG_LOADER_AR6) && !defined(CONFIG_LOADER_GEOS)
+#  error "CONFIG_LOADER_GEOS must be enabled for AR6 support!"
+#endif
+
+#if defined(CONFIG_LOADER_N0SDOS) && !defined(CONFIG_LOADER_GEOS)
+#  error "CONFIG_LOADER_GEOS must be enabled for N0SDOS support!"
+#endif
+
+#if defined(CONFIG_LOADER_HYPRALOAD) && !defined(CONFIG_LOADER_GEOS)
+#  error "CONFIG_LOADER_GEOS must be enabled for Hypraload support!"
+#endif
+
+#if defined(CONFIG_LOADER_KRILL) && !defined(CONFIG_BUS_SILENCE_REQ)
+#  error "CONFIG_BUS_SILENCE_REQ must be enabled for IRQ Krill support!"
+#endif
+
+
+#if defined(CONFIG_LOADER_KRILL) && !defined(CONFIG_LOADER_GEOS)
+#  error "CONFIG_LOADER_GEOS must be enabled for IRQ Krill support!"
+#endif
+
+#if defined(CONFIG_LOADER_N0S_IFFL) && !defined(CONFIG_LOADER_GEOS)
+#  error "CONFIG_LOADER_GEOS must be enabled for N0S IFFL support!"
+#endif
+// end of changes by Poldi
 
 /* ----- Translate CONFIG_RTC_* symbols to HAVE_RTC symbol ----- */
 #if defined(CONFIG_RTC_SOFTWARE) || \
