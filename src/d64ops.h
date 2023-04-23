@@ -65,6 +65,7 @@ typedef struct d64_lastread_s {
 } d64_lastread_t;
 
 extern d64_lastread_t d64_lastread;
+uint16_t d64_sectors_per_track(uint8_t part, uint8_t track);
 
 uint8_t d64_mount(path_t *path, uint8_t *name);
 void    d64_unmount(uint8_t part);
