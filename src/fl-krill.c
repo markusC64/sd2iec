@@ -171,7 +171,7 @@ bool drvchkme_krill(uint8_t f) {
     for (i = 5; i < command_length; i++)
       crc = crc16_update(crc, command_buffer[i]);
 
-    if (crc != 0xca5b && crc != 0xf35b) /* drvchkme; r159 is 0xf35b */
+    if (crc != 0xca5b && crc != 0xfc4f) /* drvchkme; r159 is 0xfc4f */
       return false;
 
     break;
