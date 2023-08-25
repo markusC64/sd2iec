@@ -81,6 +81,11 @@ typedef enum {
   FL_N0S_IFFL_SCAN,
   FL_N0S_IFFL_LOAD,
   FL_BOOZE,
+  FL_SPINDLE_SLEEP,
+  FL_SPINDLE_21, // Spindle < 2.1 not supported
+  FL_SPINDLE_22,
+  FL_SPINDLE_23,
+  FL_SPINDLE_3,
 } fastloaderid_t;
 
 typedef struct {
@@ -124,14 +129,12 @@ bool load_hypraload(uint8_t);
 bool drvchkme_krill(uint8_t);
 bool bus_sleep_krill(uint8_t);
 bool load_krill(uint8_t);
-<<<<<<< HEAD
 bool load_anotherworld(uint8_t);
 bool load_wingsoffury(uint8_t);
 bool scan_n0s_iffl(uint8_t);
 bool load_n0s_iffl(uint8_t);
-=======
 bool load_booze(uint8_t);
->>>>>>> 805e1f4... BoozeLoader support
+bool load_spindle(uint8_t);
 
 int16_t dolphin_getc(void);
 uint8_t dolphin_putc(uint8_t data, uint8_t with_eoi);
