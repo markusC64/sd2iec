@@ -836,6 +836,13 @@ Note: Using sd2iec without an external crystal or similiar precise
     @XR:1541.BIN
     @XW
 
+  BoozeLoader
+  -----------
+
+  The loader uses sector addressing in combination with a non-standard
+  directory and therefore only works from the original D64 images, not
+  from the FAT filesytem.
+
 JiffyDOS:
 =========
 The JiffyDOS protocol has very relaxed timing constraints compared to

@@ -249,6 +249,10 @@ static const PROGMEM struct fastloader_crc_s fl_crc_table[] = {
   { 0x40c3, FL_KRILL_SLEEP,      RXTX_NONE          }, // r184
   { 0x5088, FL_KRILL_SLEEP,      RXTX_NONE          }, // r164
 #endif
+#ifdef CONFIG_LOADER_BOOZE
+  { 0x0c48, FL_BOOZE,            RXTX_NONE          },
+  { 0x5f66, FL_BOOZE,            RXTX_NONE          },
+#endif
 
 #ifdef CONFIG_LOADER_ANOTHERWORLD
   { 0xa018, FL_ANOTHERWORLD,     RXTX_NONE          }, // CRC of Another World M-W ($0500..$053f)
@@ -392,6 +396,14 @@ static const PROGMEM struct fastloader_handler_s fl_handler_table[] = {
 #ifdef CONFIG_LOADER_N0S_IFFL
   { 0x0483, FL_N0S_IFFL_SCAN,    scan_n0s_iffl, 0 },
   { 0x03b5, FL_N0S_IFFL_LOAD,    load_n0s_iffl, 0 },
+#endif
+#ifdef CONFIG_LOADER_BOOZE
+  { 0x0373, FL_BOOZE,            load_booze,     0 },
+  { 0x04b8, FL_BOOZE,            load_booze,     0 },
+  { 0x020b, FL_NONE,             load_booze,     0 },
+  { 0x020d, FL_NONE,             load_booze,     0 },
+  { 0x020f, FL_NONE,             load_booze,     0 },
+  { 0x0211, FL_NONE,             load_booze,     0 },
 #endif
 
   { 0, FL_NONE, NULL, 0 }, // end marker
