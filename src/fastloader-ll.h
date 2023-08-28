@@ -80,6 +80,11 @@ void wof_put_byte(uint8_t byte);
 
 void n0s_iffl_put_byte(uint8_t byte);
 
+uint8_t bitfire_get_byte_data_clk(void);
+uint8_t bitfire_get_byte_data_clk_inv(void);
+uint8_t bitfire_get_byte_clk_data(void);
+uint8_t bitfire_get_byte_clk_data_inv(void);
+
 typedef enum { PARALLEL_DIR_IN = 0,
                PARALLEL_DIR_OUT } parallel_dir_t;
 
