@@ -97,6 +97,10 @@ typedef enum {
   FL_BITFIRE_10,
   FL_BITFIRE_11,
   FL_BITFIRE_12,
+  FL_SPARKLE_10,
+  FL_SPARKLE_15,
+  FL_SPARKLE_20,
+  FL_SPARKLE_21,
 } fastloaderid_t;
 
 typedef struct {
@@ -147,6 +151,7 @@ bool load_n0s_iffl(uint8_t);
 bool load_booze(uint8_t);
 bool load_spindle(uint8_t);
 bool load_bitfire(uint8_t);
+bool load_sparkle(uint8_t);
 
 int16_t dolphin_getc(void);
 uint8_t dolphin_putc(uint8_t data, uint8_t with_eoi);
