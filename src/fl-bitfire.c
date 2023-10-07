@@ -527,7 +527,7 @@ bool load_bitfire(uint8_t proto) {
 
   memset(&session, 0, sizeof(session));
   session.file_crc = 0xffff;
-  session.hdr_layout = &hdr_fields[proto];
+  session.hdr_layout = (void*) &hdr_fields[proto];
 
   session.dir_buf = alloc_system_buffer();
   if (session.dir_buf == NULL)
