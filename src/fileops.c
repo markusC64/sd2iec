@@ -1037,6 +1037,18 @@ void file_open(uint8_t secondary) {
     return;
   }
 
+  /*
+   * We need to use the filename (fname) from the command buffer
+   * not from dirent as dirent.name may hold an all uppercase
+   * fat 8.3 name from unwrapped mode E1. (from next_match above)
+   * If we are now in E2 we will lose the case sensitive filename
+   * from the dos command. This results in a creating a wrapped
+   * file with the wrong name and subsequent save/write creates
+   * another wrapped file with the correct name.
+   *
+   */
+  ustrncpy(dent.name, fname, CBM_NAME_LENGTH);
+
   /* Grab a buffer */
   buf = alloc_buffer();
   if (!buf)
