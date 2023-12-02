@@ -16,7 +16,7 @@ jobs:
          sudo apt-get update
          sudo apt-get -y install avr-libc
          REV=$(git rev-parse --short HEAD | tr a-z A-Z)
-         VER=63
+         VER=94
          PLUS=+
          echo "ver=1.0.0atentdead0-${VER}${PLUS}-$REV" >> $GITHUB_OUTPUT
          make CONFIG=configs/config-uIEC PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
