@@ -27,20 +27,37 @@
 
 */
 
+#ifdef __AVR__
+# include <avr/boot.h>
+#endif
 #include <string.h>
+#include <stdint.h>
 #include "config.h"
 #include "crc.h"
+#include "atomic.h"
+#include "buffers.h"
+#include "d64ops.h"
 #include "diskchange.h"
+#include "display.h"
 #include "doscmd.h"
+#include "errormsg.h"
 #include "fastloader-ll.h"
-#include "iec-bus.h"
-#include "iec.h"
+#include "fileops.h"
+#include "bus.h"
 #include "led.h"
 #include "progmem.h"
+#include "parser.h"
 #include "timer.h"
+#include "ustring.h"
+#include "wrapops.h"
 #include "fastloader.h"
 
 fastloaderid_t detected_loader;
+
+#ifdef CONFIG_HAVE_IEC
+#include "iec-bus.h"
+
+#define UNUSED_PARAMETER uint8_t __attribute__((unused)) unused__
 
 /* Function pointer to the current byte transmit/receive functions */
 /* (to simplify loaders with multiple variations of these)         */
@@ -59,7 +76,9 @@ volatile uint8_t parallel_rxflag;
 #endif
 
 /* Small helper for fastloaders that need to detect disk changes */
-uint8_t check_keys(void) {
+uint8_t __attribute__((unused)) check_keys(void) {
+#if 0
+  // FIXME: fastloader key_pressed
   /* Check for disk changes etc. */
   if (key_pressed(KEY_NEXT | KEY_PREV | KEY_HOME)) {
     change_disk();
@@ -68,13 +87,9 @@ uint8_t check_keys(void) {
     reset_key(KEY_SLEEP);
     set_busy_led(0);
     set_dirty_led(1);
-
-    /* wait for release */
-    while (key_pressed(IGNORE_KEYS)) ;
-
     return 1;
   }
-
+#endif
   return 0;
 }
 
@@ -258,6 +273,7 @@ const file_quirks_t *get_file_quirks(const file_quirks_t *fq_table, uint16_t crc
 }
 #endif
 
+
 /*
  *
  *  GIJoe/EPYX common code
@@ -309,3 +325,5 @@ PARALLEL_HANDLER {
   parallel_rxflag = 1;
 }
 #endif
+
+#endif // CONFIG_HAVE_IEC

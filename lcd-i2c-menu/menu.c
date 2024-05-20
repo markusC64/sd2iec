@@ -1,5 +1,7 @@
-/* sd2iec - SD/MMC to Commodore serial bus interface/controller
+/* NODISKEMU - SD/MMC to IEEE-488 interface/controller
    Copyright (C) 2007-2012  Ingo Korb <ingo@akana.de>
+
+   NODISKEMU is a fork of sd2iec by Ingo Korb (et al.), http://sd2iec.de
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +16,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-   
+
    menu.c: Generic menu code
 
 */
@@ -22,6 +24,7 @@
 #include "config.h"
 #include <avr/io.h>
 #include <string.h>
+#include <avr/pgmspace.h>
 #include "encoder.h"
 #include "lcd.h"
 #include "timer.h"
@@ -30,7 +33,13 @@
 
 
 char *menulines[CONFIG_MAX_MENU_ENTRIES];
+
+#if CONFIG_MAX_MENU_ENTRIES > 255
+#error Value too large
+#else
 static uint8_t entrycount;
+#endif
+
 static char *menuheap;
 extern char __heap_start;
 
@@ -64,7 +73,7 @@ void menu_resetlines(void) {
   menuheap = &__heap_start;
   entrycount = 0;
 }
-  
+
 uint8_t menu_addline(char *line) {
   /* Check remaining heap space */
   if (((uint16_t)menuheap+strlen(line)+1) > SP-32 || entrycount >= CONFIG_MAX_MENU_ENTRIES) {
@@ -89,7 +98,7 @@ uint8_t menu_display(uint8_t init, uint8_t startentry) {
     lcd_setcursormode(LCD_CURSOR_NONE);
     lcd_clrscr();
 
-    prevencoder = encoder_position;
+    prevencoder = encoder_position / (CONFIG_ENCODER_TYPE);
     prevoffset  = -1;
     preventry   = curentry;
     scrollofs   = -1;
@@ -105,7 +114,7 @@ uint8_t menu_display(uint8_t init, uint8_t startentry) {
     if (curoffset < 0) curoffset = 0;
   }
 
-  curencoder = encoder_position;
+  curencoder = encoder_position / (CONFIG_ENCODER_TYPE);
 
   /* Encoder position changed */
   if (curencoder != prevencoder) {

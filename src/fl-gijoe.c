@@ -66,7 +66,7 @@ bool load_gijoe(UNUSED_PARAMETER) {
 
   set_data(1);
   set_clock(1);
-  set_atn_irq(0);
+  set_iec_atn_irq(0);
 
   /* Wait until the bus has settled */
   delay_ms(10);

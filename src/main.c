@@ -46,14 +46,23 @@
 #include "uart.h"
 #include "ustring.h"
 #include "utils.h"
+#include "diagnose.h"
+#include "lcd.h"
+#include "menu.h"
 
+/* Global variables */
+uint8_t device_address = CONFIG_DEFAULT_ADDR;   // Current device address
+
+#ifdef HAVE_DUAL_INTERFACE
+  uint8_t active_bus = IEEE488;
+#endif
 
 #if defined(__AVR__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 1))
 int main(void) __attribute__((OS_main));
 #endif
 int main(void) {
   /* Early system initialisation */
-  board_init();
+  early_board_init();
   system_init_early();
   leds_init();
 
@@ -67,12 +76,14 @@ int main(void) {
   spi_init(SPI_SPEED_SLOW);
 #endif
   timer_init();
-  bus_interface_init();
   i2c_init();
 
   /* Second part of system initialisation, switches to full speed on ARM */
   system_init_late();
   enable_interrupts();
+
+  /* Prompt software name and version string */
+  uart_puts_P(PSTR("\r\nNODISKEMU " VERSION "\r\n"));
 
   /* Internal-only initialisation, called here because it's faster */
   buffers_init();
@@ -80,17 +91,12 @@ int main(void) {
 
   /* Anything that does something which needs the system clock */
   /* should be placed after system_init_late() */
-  bus_init();    // needs delay
   rtc_init();    // accesses I2C
   disk_init();   // accesses card
-  read_configuration();
+  read_configuration(); // restores configuration, may change device address
 
   filesystem_init(0);
-  change_init();
-
-  uart_puts_P(PSTR("\r\nsd2iec " VERSION " #"));
-  uart_puthex(device_address);
-  uart_putcrlf();
+  // FIXME: change_init();
 
 #ifdef CONFIG_REMOTE_DISPLAY
   /* at this point all buffers should be free, */
@@ -106,20 +112,33 @@ int main(void) {
 
   set_busy_led(0);
 
-#if defined(HAVE_SD) && BUTTON_PREV != 0
+#if defined(HAVE_SD)
   /* card switch diagnostic aid - hold down PREV button to use */
-  if (!(buttons_read() & BUTTON_PREV)) {
-    while (buttons_read() & BUTTON_NEXT) {
-      set_dirty_led(sdcard_detect());
-# ifndef SINGLE_LED
-      set_busy_led(sdcard_wp());
-# endif
-    }
-    reset_key(0xff);
-  }
+  if (menu_system_enabled && get_key_press(KEY_PREV))
+    board_diagnose();
 #endif
 
-  bus_mainloop();
+  if (menu_system_enabled)
+    lcd_splashscreen();
 
-  while (1);
+//  bus_interface_init();
+//  bus_init();
+//  read_configuration();
+  late_board_init();
+
+  for (;;) {
+    if (menu_system_enabled)
+      lcd_refresh();
+    else {
+      lcd_clear();
+      lcd_printf("#%d", device_address);
+    }
+    /* Unit number may depend on hardware and stored settings */
+    /* so present it here at last */
+    printf("#%02d\r\n", device_address);
+    bus_interface_init();
+    bus_init();    // needs delay, inits device address with HW settings
+    bus_mainloop();
+    read_configuration();
+  }
 }

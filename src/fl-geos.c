@@ -30,6 +30,7 @@
 #include <string.h>
 #include "config.h"
 #include "atomic.h"
+#include "bus.h"
 #include "buffers.h"
 #include "d64ops.h"
 #include "display.h"

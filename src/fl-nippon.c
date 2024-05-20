@@ -104,7 +104,7 @@ bool load_nippon(UNUSED_PARAMETER) {
 
   /* init */
   uart_puts_P(PSTR("NIPPON"));
-  set_atn_irq(0);
+  set_iec_atn_irq(0);
   buf = alloc_system_buffer();
   if (!buf) {
     uart_puts_P(PSTR("BUF ERR")); uart_putcrlf();

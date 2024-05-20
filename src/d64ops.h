@@ -49,6 +49,8 @@
 #define D64_TYPE_D71  3
 #define D64_TYPE_D81  4
 #define D64_IS_READLNLY 64
+#define D64_TYPE_D80  8
+#define D64_TYPE_D82 16
 #define D64_HAS_ERRORINFO 128
 
 /* Disk image sizes */

@@ -27,21 +27,23 @@
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <stdio.h>
+
 #include "config.h"
 #include "avrcompat.h"
 #include "uart.h"
+#include "bus.h"
 
-static uint8_t txbuf[1 << CONFIG_UART_BUF_SHIFT];
-static volatile uint16_t read_idx;
-static volatile uint16_t write_idx;
+#if CONFIG_UART_BAUDRATE != 0xdeadbeef
+#  define BAUD CONFIG_UART_BAUDRATE
+#  include <util/setbaud.h>
+#endif
 
-ISR(USART_UDRE_vect) {
-  if (read_idx == write_idx) return;
-  UDR = txbuf[read_idx];
-  read_idx = (read_idx+1) & (sizeof(txbuf)-1);
-  if (read_idx == write_idx)
-    UCSRB &= ~ _BV(UDRIE);
-}
+// uint8_t txbuf[1 << CONFIG_UART_BUF_SHIFT];
+// FIXME: use CONFIG_UART_BUF_SHIFT in interrupt routine
+uint8_t txbuf[1 << 8];
+
+volatile uint16_t read_idx;
+volatile uint16_t write_idx;
 
 void uart_putc(char c) {
   uint16_t t=(write_idx+1) & (sizeof(txbuf)-1);
@@ -52,7 +54,6 @@ void uart_putc(char c) {
 #endif
   txbuf[write_idx] = c;
   write_idx = t;
-  //if (read_idx == write_idx) PORTD |= _BV(PD7);
   UCSRB |= _BV(UDRIE);
 }
 
@@ -62,13 +63,13 @@ void uart_puthex(uint8_t num) {
   if (tmp < 10)
     uart_putc('0'+tmp);
   else
-    uart_putc('a'+tmp-10);
+    uart_putc('A'+tmp-10);
 
   tmp = num & 0x0f;
   if (tmp < 10)
     uart_putc('0'+tmp);
   else
-    uart_putc('a'+tmp-10);
+    uart_putc('A'+tmp-10);
 }
 
 void uart_trace(void *ptr, uint16_t start, uint16_t len) {
@@ -107,6 +108,7 @@ void uart_trace(void *ptr, uint16_t start, uint16_t len) {
     }
     uart_putc('|');
     uart_putcrlf();
+    uart_flush();
     start+=16;
   }
 }
@@ -143,22 +145,28 @@ void uart_putcrlf(void) {
 static FILE mystdout = FDEV_SETUP_STREAM(ioputc, NULL, _FDEV_SETUP_WRITE);
 
 void uart_init(void) {
-  /* Seriellen Port konfigurieren */
-
-  UBRRH = (int)((double)F_CPU/(16.0*CONFIG_UART_BAUDRATE)-1) >> 8;
-  UBRRL = (int)((double)F_CPU/(16.0*CONFIG_UART_BAUDRATE)-1) & 0xff;
-
-  UCSRB = _BV(RXEN) | _BV(TXEN);
-  // I really don't like random #ifdefs in the code =(
-#if defined __AVR_ATmega32__
-  UCSRC = _BV(URSEL) | _BV(UCSZ1) | _BV(UCSZ0);
-#else
-  UCSRC = _BV(UCSZ1) | _BV(UCSZ0);
+  /* Configure serial port */
+#if CONFIG_HARDWARE_VARIANT == HW_PETSDPLUS
+   // petSD+ 38400 baud, 8N1
+   // Values taken from http://wormfood.net/avrbaudcalc.php?clock=8%2C16
+   UBRRH = 0;
+   UBRRL = (active_bus == IEC) ? 0x0C : 0x19;
+   UCSRA &= ~(1 << U2X0);
+#  else
+   UBRRH = UBRRH_VALUE;
+   UBRRL = UBRRL_VALUE;
+#  if USE_2X
+   UCSRA |= (1 << U2X0);        /* U2X-mode required */
+#    else
+   UCSRA &= ~(1 << U2X0);       /* U2X-not required */
+#  endif
 #endif
+
+  UCSRB = _BV(TXEN);
+  UCSRC = _BV(UCSZ1) | _BV(UCSZ0);
 
   stdout = &mystdout;
 
-  //UCSRB |= _BV(UDRIE);
   read_idx  = 0;
   write_idx = 0;
 }

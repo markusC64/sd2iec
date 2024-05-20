@@ -26,8 +26,6 @@
 #ifndef IEC_H
 #define IEC_H
 
-#include "bus.h"
-
 /**
  * struct iecflags_t - Bitfield of various flags, mostly IEC-related
  * @eoi_recvd      : Received EOI with the last byte read
@@ -66,7 +64,7 @@ extern iec_data_t iec_data;
 
 uint8_t iec_check_atn(void);
 void iec_init(void);
-
-void  __attribute__ ((noreturn)) iec_mainloop(void);
+void iec_mainloop(void);
+void iec_sleep(bool sleep);
 
 #endif

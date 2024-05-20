@@ -224,7 +224,7 @@ bool load_mmzak(UNUSED_PARAMETER) {
   if (buf == NULL)
     return true;
 
-  set_atn_irq(0);
+  set_iec_atn_irq(0);
 
   /* initial handshake */
   /* FIXME: Not sure if needed, actually uses the ATN-ACK HW on a 1541 */

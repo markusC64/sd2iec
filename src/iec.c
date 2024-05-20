@@ -51,14 +51,12 @@
 #include "system.h"
 #include "timer.h"
 #include "uart.h"
-#include "iec.h"
+#include "bus.h"
+#include "menu.h"
 
 /* ------------------------------------------------------------------------- */
 /*  Global variables                                                         */
 /* ------------------------------------------------------------------------- */
-
-/* Current device address */
-uint8_t device_address;
 
 iec_data_t iec_data;
 
@@ -329,7 +327,7 @@ static uint8_t iec_listen_handler(const uint8_t cmd) {
   while (1) {
     if (iec_data.iecflags & JIFFY_ACTIVE) {
       iec_bus_t flags;
-      set_atn_irq(1);
+      set_iec_atn_irq(1);
       c = jiffy_receive(&flags);
       if (!(flags & IEC_BIT_ATN))
         /* ATN was active at the end of the transfer */
@@ -537,52 +535,56 @@ void iec_init(void) {
   /* Read the hardware-set device address */
   device_hw_address_init();
   delay_ms(1);
+#if CONFIG_HARDWARE_VARIANT != HW_PETSDPLUS
   device_address = device_hw_address();
+#endif
 }
-void bus_init(void) __attribute__((weak, alias("iec_init")));
+
+
+void iec_sleep(bool sleep) {
+  if (sleep) {
+    set_iec_atn_irq(0);
+//    iec_data.bus_state = BUS_SLEEP;
+    set_data(1);
+    set_clock(1);
+    set_error(ERROR_OK);
+    set_dirty_led(1);
+  } else {
+    update_leds();
+    iec_data.bus_state = BUS_IDLE;
+    set_iec_atn_irq(1);
+  }
+}
+
 
 void iec_mainloop(void) {
   int16_t cmd = 0; // make gcc happy...
+  bool switch_to_ieee488 = false;
 
   set_error(ERROR_DOSVERSION);
 
   iec_data.bus_state = BUS_IDLE;
 
-  while (1) {
+  do {
     switch (iec_data.bus_state) {
     case BUS_SLEEP:
-      set_atn_irq(0);
-      set_data(1);
-      set_clock(1);
-      set_error(ERROR_OK);
-      set_busy_led(0);
-      set_dirty_led(1);
-
-      /* Wait until the sleep key is used again */
-      while (!key_pressed(KEY_SLEEP))
-        system_sleep();
-      reset_key(KEY_SLEEP);
-
-      update_leds();
-
-      iec_data.bus_state = BUS_IDLE;
+ //     uart_puts_P(PSTR("IEC: BUS_SLEEP\r\n"));
+      handle_lcd();
+      switch_to_ieee488 = handle_buttons();
       break;
 
     case BUS_IDLE:  // EBFF
+//      uart_puts_P(PSTR("IEC: BUS_IDLE\r\n"));
       /* Wait for ATN */
       parallel_set_dir(PARALLEL_DIR_IN);
-      set_atn_irq(1);
+      set_iec_atn_irq(1);
       while (IEC_ATN) {
-        if (key_pressed(KEY_NEXT | KEY_PREV | KEY_HOME)) {
-          change_disk();
-        } else if (key_pressed(KEY_SLEEP)) {
-          reset_key(KEY_SLEEP);
-          iec_data.bus_state = BUS_SLEEP;
+        handle_lcd();
+        if(handle_buttons()) {
+          switch_to_ieee488=true;
           break;
-        } else if (display_found && key_pressed(KEY_DISPLAY)) {
-          display_service();
-          reset_key(KEY_DISPLAY);
         }
+//         handle_buttons();
         system_sleep();
       }
 
@@ -591,10 +593,11 @@ void iec_mainloop(void) {
       break;
 
     case BUS_FOUNDATN: // E85B
+ //     uart_puts_P(PSTR("IEC: BUS_FOUNDATN\r\n"));
       /* Pull data low to say we're here */
       set_clock(1);
       set_data(0);
-      set_atn_irq(0);
+      set_iec_atn_irq(0);
 
       iec_data.device_state = DEVICE_IDLE;
       iec_data.bus_state    = BUS_ATNACTIVE;
@@ -692,6 +695,7 @@ void iec_mainloop(void) {
       break;
 
     case BUS_FORME: // E8D2
+//      uart_puts_P(PSTR("IEC: BUS_FORME\r\n"));
       if (!IEC_ATN)
         iec_data.bus_state = BUS_ATNACTIVE;
       else
@@ -699,13 +703,15 @@ void iec_mainloop(void) {
       break;
 
     case BUS_NOTFORME: // E8FD
-      set_atn_irq(0);
+//      uart_puts_P(PSTR("IEC: BUS_NOTFORME\r\n"));
+      set_iec_atn_irq(0);
       set_clock(1);
       set_data(1);
       iec_data.bus_state = BUS_ATNFINISH;
       break;
 
     case BUS_ATNFINISH: // E902 + DolphinDOS A7CC
+//      uart_puts_P(PSTR("IEC: BUS_ATNFINISH\r\n"));
       iec_data.iecflags &= ~DOLPHIN_ACTIVE;
       parallel_clear_rxflag();
 
@@ -728,7 +734,8 @@ void iec_mainloop(void) {
       break;
 
     case BUS_ATNPROCESS: // E8D7
-      set_atn_irq(1);
+ //     uart_puts_P(PSTR("IEC: BUS_ATNPROCESS\r\n"));
+      set_iec_atn_irq(1);
 
       if (iec_data.device_state == DEVICE_LISTEN) {
         if (iec_listen_handler(cmd))
@@ -747,7 +754,8 @@ void iec_mainloop(void) {
       break;
 
     case BUS_CLEANUP:
-      set_atn_irq(1);
+ //     uart_puts_P(PSTR("IEC: BUS_CLEANUP\r\n"));
+      set_iec_atn_irq(1);
       // 836B
       set_clock(1);
       set_data(1);
@@ -763,7 +771,7 @@ void iec_mainloop(void) {
           /* If the disk was changed the buffer contents are useless */
           if (disk_state == DISK_CHANGED || disk_state == DISK_REMOVED) {
             free_multiple_buffers(FMB_ALL);
-            change_init();
+            // FIXME: change_init();
             filesystem_init(0);
           } else
             /* Disk state indicated an error, try to recover by initialising */
@@ -795,6 +803,6 @@ void iec_mainloop(void) {
         iec_data.bus_state = BUS_IDLE;
       break;
     }
-  }
+  } while (!switch_to_ieee488);
+ // uart_puts_P(PSTR("IEC: End-Mainloop\r\n"));
 }
-void bus_mainloop(void) __attribute__ ((weak, alias("iec_mainloop")));

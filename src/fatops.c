@@ -213,6 +213,10 @@ imgtype_t check_imageext(uint8_t *name) {
       if (s == '8')
         return IMG_IS_D81;
     }
+    if (s == '8' && t == '0')
+      return IMG_IS_D80;
+    if (s == '8' && t == '2')
+      return IMG_IS_D82;
   }
 
   return IMG_UNKNOWN;
@@ -260,7 +264,7 @@ static bool should_save_raw(uint8_t* name) {
  * This function converts the string in the given buffer from PETSCII to
  * ASCII in-place.
  */
-static void pet2asc(uint8_t *buf) {
+void pet2asc(uint8_t *buf) {
   uint8_t ch;
   while (*buf) {
     ch = *buf;
@@ -285,12 +289,8 @@ static void pet2asc(uint8_t *buf) {
  * file name. Returns true if it is, false if not.
  */
 static bool is_valid_fat_char(const uint8_t c) {
-  if (isalnum(c) || c == '!' || c == ' ' ||
-      (c >= '#' && c <= ')') ||
-      c == '-' || c == '.')
-    return true;
-  else
-    return false;
+  if (c < 32 || c > 126) return false;
+  return (strchr("\"*,/\\:=?@", c) == NULL ? true : false);
 }
 
 /**
@@ -1513,7 +1513,8 @@ void fatops_init(uint8_t preserve_path) {
   if (!preserve_path) {
     current_part = 0;
     display_current_part(0);
-    set_changelist(NULL, NULLSTRING);
+    //FIXME
+    //set_changelist(NULL, NULLSTRING);
     previous_file_dirent.name[0] = 0; // clear '*' file
   }
 
@@ -1720,7 +1721,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
   ext = ustrrchr(name, '.');
   imagetype = check_imageext(name);
 
-  if (ext != NULL && (imagetype & D64_TYPE_MASK) != IMG_UNKNOWN) {
+  if (ext != NULL && imagetype != IMG_UNKNOWN) {
     /* remove extension from name (which will be used as the disk label) */
     *ext = '\0';
   } else {
@@ -1757,7 +1758,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
       return;
     }
 
-    switch (imagetype & D64_TYPE_MASK) {
+    switch (imagetype) {
       case IMG_IS_D41:
         fsize = D41_SIZE;
         break;
@@ -1767,6 +1768,12 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
       case IMG_IS_D81:
         fsize = D81_SIZE;
         break;
+      case IMG_IS_D80:
+        fsize = 533248;
+        break;
+      case IMG_IS_D82:
+        fsize = 1066496;
+        break;
       case IMG_IS_DNP:
         if (id != 0) fsize = 65536 * (100*(id[0]-'0') + 10*(id[1]-'0') + (id[2]-'0'));
         else fsize = 0;
@@ -1775,7 +1782,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
         fsize = 0;
         break;
     }
-
+    
     if (fsize == 0) {
       set_error(ERROR_FILE_NOT_FOUND);
       return;
@@ -1795,7 +1802,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     }
   } else if (res == FR_OK) { // image file exists
     /* Don't overwrite the image if the extension was auto-appended */
-    if (ext == NULL || (imagetype & D64_TYPE_MASK) == IMG_IS_DNP) {
+    if (ext == NULL || imagetype == IMG_IS_DNP) {
       f_close(&partition[path->part].imagehandle);
       set_error(ERROR_FILE_EXISTS);
       return;
@@ -1807,7 +1814,17 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     return;
   }
 
-  if ((imagetype & D64_TYPE_MASK) == IMG_IS_DNP) {
+  if (imagetype == IMG_IS_DNP) {
+    f_close(&partition[path->part].imagehandle);
+    return;
+  }
+
+  if (imagetype == IMG_IS_D80) {
+    f_close(&partition[path->part].imagehandle);
+    return;
+  }
+
+  if (imagetype == IMG_IS_D82) {
     f_close(&partition[path->part].imagehandle);
     return;
   }
@@ -1816,6 +1833,9 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     f_close(&partition[path->part].imagehandle);
     return;
   }
+
+  if (id != NULL)
+     partition[path->part].imagetype &= ~D64_IS_READLNLY;
 
   partition[path->part].fop = &d64ops;
   format(path, name, id);

@@ -46,11 +46,11 @@ include $(OBJDIR)/make.inc
 HEXFORMAT = ihex
 
 # Target file name (without extension).
-TARGET = $(OBJDIR)/sd2iec
+TARGET = $(OBJDIR)/NODISKEMU
 
 # List C source files here. (C dependencies are automatically generated.)
 SRC  = buffers.c fatops.c fileops.c main.c errormsg.c
-SRC += doscmd.c ff.c d64ops.c diskchange.c
+SRC += doscmd.c ff.c d64ops.c diagnose.c
 SRC += eeprom-conf.c parser.c utils.c led.c diskio.c
 SRC += timer.c $(CONFIG_ARCH)/arch-timer.c $(CONFIG_ARCH)/spi.c
 SRC += $(CONFIG_ARCH)/system.c
@@ -65,13 +65,12 @@ ifeq ($(CONFIG_HAVE_IEC),y)
   SRC += fl-hypraload.c fl-krill.c fl-booze.c fl-spindle.c
   SRC += fl-bitfire.c fl-sparkle.c
 endif
+# Always include fastloader.c, if only to define detected_loader as FL_NONE
+SRC += fastloader.c
+EXTRAINCDIRS =
 
 ifneq ($(CONFIG_NO_SD),y)
   SRC += sdcard.c
-endif
-
-ifeq ($(CONFIG_M2I),y)
-  SRC += m2iops.c
 endif
 
 ifneq ($(CONFIG_HAVE_IEC),y)
@@ -84,7 +83,11 @@ ifneq ($(CONFIG_HAVE_IEC),y)
 endif
 
 ifeq ($(CONFIG_HAVE_IEC),y)
-  SRC += iec.c fastloader.c
+  SRC += iec.c
+  SRC += fl-ar6.c fl-dolphin.c fl-dreamload.c fl-eload.c
+  SRC += fl-epyxcart.c fl-fc3exos.c fl-geos.c fl-gijoe.c
+  SRC += fl-mmzak.c fl-nippon.c fl-turbodisk.c fl-ulm3.c
+  SRC += fl-n0sdos.c fl-samsjourney.c
 endif
 
 ifeq ($(CONFIG_HAVE_IEEE),y)
@@ -134,6 +137,33 @@ ifeq ($(CONFIG_RTC_SOFTWARE),y)
   SRC += rtc.c avr/softrtc.c
 endif
 
+ifeq ($(CONFIG_ONBOARD_DISPLAY),y)
+  SRC += avr/lcd.c
+  SRC += menu.c
+endif
+
+# petSD requires ENC28J60 detection
+# If it is not available, the then unused ETINT pin is used for IFC
+ifeq ($(CONFIG_HARDWARE_VARIANT),8)
+  SRC += enc28j60.c
+endif
+
+# petSD+ rev. 2.x boards have a I2C slave for PWM and digital output
+# Include path to shared include file
+ifeq ($(CONFIG_HARDWARE_VARIANT),9)
+  NEED_I2C := y
+  EXTRAINCDIRS += test lcd-i2c-pwm-io
+endif
+
+# cbmSD-mini is based on petSD+, so:
+# petSD+ rev. 2.x boards have a I2C slave for PWM and digital output
+# Include path to shared include file
+ifeq ($(CONFIG_HARDWARE_VARIANT),10)
+  NEED_I2C := y
+  EXTRAINCDIRS += test lcd-i2c-pwm-io
+endif
+
+
 # Optimization level, can be [0, 1, 2, 3, s].
 #     0 = turn off optimization. s = optimize for size.
 #     (Note: 3 is not always the best optimization level. See avr-libc FAQ.)
@@ -146,13 +176,6 @@ OPT = s
 #     AVR Studio 4.10 requires dwarf-2.
 #     AVR [Extended] COFF format requires stabs, plus an avr-objcopy run.
 DEBUG = dwarf-2
-
-
-# List any extra directories to look for include files here.
-#     Each directory must be seperated by a space.
-#     Use forward slashes for directory separators.
-#     For a directory that has spaces, enclose it in quotes.
-EXTRAINCDIRS =
 
 
 # Compiler flag to set the C Standard level.
@@ -192,6 +215,7 @@ endif
 
 LONGVERSION := -$(CONFIGSUFFIX)
 CDEFS += -DVERSION=\"$(PROGRAMVERSION)\" -DLONGVERSION=\"$(LONGVERSION)\"
+CDEFS += -DHWNAME=\"$(CONFIG_HARDWARE_NAME)\"
 
 
 # Define programs and commands.
@@ -215,7 +239,7 @@ include scripts/$(CONFIG_ARCH)/variables.mk
 CFLAGS = -g$(DEBUG)
 CFLAGS += $(CDEFS)
 CFLAGS += -O$(OPT) -fno-strict-aliasing
-CFLAGS += -Wall -Wstrict-prototypes -Werror -Wextra
+CFLAGS += -Wall -Wstrict-prototypes
 #CFLAGS += -Wa,-adhlns=$(OBJDIR)/$(<:.c=.lst)
 CFLAGS += -I$(OBJDIR) -Isrc -Isrc/$(CONFIG_ARCH)
 CFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
@@ -234,6 +258,7 @@ endif
 #             and function names needs to be present in the assembler source
 #             files -- see avr-libc docs [FIXME: not yet described there]
 ASFLAGS = -Wa,-gstabs -I$(OBJDIR) -Isrc -Isrc/$(CONFIG_ARCH)
+ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
 
 #---------------- Linker Options ----------------
@@ -398,13 +423,14 @@ clean:
 	$(Q)$(REMOVE) $(OBJDIR)/make.inc
 	$(Q)$(REMOVE) $(OBJDIR)/asmconfig.h
 	$(Q)$(REMOVE) $(OBJDIR)/*.bin
+	$(Q)$(REMOVE) *.bin
 	$(Q)$(REMOVE) $(LST)
 	$(Q)$(REMOVE) $(CSRC:.c=.s)
 	$(Q)$(REMOVE) $(CSRC:.c=.d)
 	$(Q)$(REMOVE) .dep/*
 	$(Q)$(REMOVE) -rf codedoc
 	$(Q)$(REMOVE) -rf doxyinput
-	-$(Q)rmdir --ignore-fail-on-non-empty -p $(OBJDIRS)
+	$(Q)$(REMOVE) -rf $(OBJDIRS)
 
 # Include the dependency files.
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)

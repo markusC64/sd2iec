@@ -1,10 +1,26 @@
 # architecture-dependent variables
 
 #---------------- Source code ----------------
-ASMSRC = avr/crc7asm.S
+ASMSRC = avr/crc7asm.S avr/timerint.S
+
+ifeq ($(CONFIG_UART_DEBUG),y)
+  ASMSRC += avr/uartint.S
+endif
 
 ifeq ($(CONFIG_HAVE_IEC),y)
   ASMSRC += avr/fastloader-ll.S
+endif
+
+ifeq ($(CONFIG_HARDWARE_VARIANT),8)
+  ASMSRC += avr/atn-ack-petsd.S
+endif
+
+ifeq ($(CONFIG_HARDWARE_VARIANT),9)
+  ASMSRC += avr/atn-ack-petsd+.S
+endif
+
+ifeq ($(CONFIG_HARDWARE_VARIANT),10)
+  ASMSRC += avr/atn-ack-petsd+.S
 endif
 
 ifdef NEED_I2C
@@ -87,27 +103,28 @@ EXTMEMOPTS =
 # Type: avrdude -c ?
 # to get a full listing.
 #
-AVRDUDE_PROGRAMMER = stk200
+AVRDUDE_PROGRAMMER = avrispmkii
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
-AVRDUDE_PORT = lpt1    # programmer connected to serial device
+AVRDUDE_PORT = usb    # programmer connected to serial device
 
-AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex
+AVRDUDE_WRITE_FLASH = -B 1 -U flash:w:$(TARGET).hex
 # AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep
 
 # Allow fuse overrides from the config file
 ifdef CONFIG_EFUSE
-  EFUSE := CONFIG_EFUSE
+  EFUSE := $(CONFIG_EFUSE)
 endif
 ifdef CONFIG_HFUSE
-  HFUSE := CONFIG_HFUSE
+  HFUSE := $(CONFIG_HFUSE)
 endif
 ifdef CONFIG_LFUSE
-  LFUSE := CONFIG_LFUSE
+  LFUSE := $(CONFIG_LFUSE)
 endif
 
 # Calculate command line arguments for fuses
-AVRDUDE_WRITE_FUSES :=
+# Toggle bits slowly, AVR might run slowly
+AVRDUDE_WRITE_FUSES := -B 50
 ifdef EFUSE
   AVRDUDE_WRITE_FUSES += -U efuse:w:$(EFUSE):m
 endif

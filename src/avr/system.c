@@ -89,15 +89,6 @@ void system_init_early(void) {
                : "I" (_SFR_IO_ADDR(MCUCR))
                : "r24"
                );
-#elif defined __AVR_ATmega32__
-  asm volatile ("in  r24, %0\n"
-                "ori r24, 0x80\n"
-                "out %0, r24\n"
-                "out %0, r24\n"
-                :
-                : "I" (_SFR_IO_ADDR(MCUCSR))
-                : "r24"
-                );
 #elif defined __AVR_ATmega128__ || defined __AVR_ATmega1281__
   /* Just assume that JTAG doesn't hurt us on the m128 */
 #else
@@ -126,13 +117,4 @@ void system_reset(void) {
   restart_call();
 }
 
-/* Disable interrupts */
-void disable_interrupts(void) {
-  cli();
-}
-
-/* Enable interrupts */
-void enable_interrupts(void) {
-  sei();
-}
 

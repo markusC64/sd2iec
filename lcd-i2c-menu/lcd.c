@@ -1,5 +1,7 @@
-/* sd2iec - SD/MMC to Commodore serial bus interface/controller
+/* NODISKEMU - SD/MMC to IEEE-488 interface/controller
    Copyright (C) 2007-2012  Ingo Korb <ingo@akana.de>
+
+   NODISKEMU is a fork of sd2iec by Ingo Korb (et al.), http://sd2iec.de
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -45,13 +47,13 @@ static FILE lcd_stdout = FDEV_SETUP_STREAM(lcd_putc, NULL, _FDEV_SETUP_WRITE);
 static const PROGMEM uint8_t lcd_rowaddr[] = LCD_ROWADDR;
 static uint8_t cursor_controller;
 
-static void inline lcd1_strobe(void) {
+static inline void lcd1_strobe(void) {
   LCD_PORT |=  LCD_E1;
   _delay_us(1);
   LCD_PORT &= (uint8_t)~LCD_E1;
 }
 
-static void inline lcd2_strobe(void) {
+static inline void lcd2_strobe(void) {
   LCD_PORT |=  LCD_E2;
   _delay_us(1);
   LCD_PORT &= (uint8_t)~LCD_E2;
@@ -69,7 +71,7 @@ static void lcd_wait(uint8_t controller) {
   uint8_t tmp;
 
   LCD_DDR = LCD_RS | LCD_RW | LCD_E1 | LCD_E2;
-  
+
   LCD_PORT |=  LCD_RW;
   LCD_PORT &= (uint8_t)~LCD_RS;
 
@@ -153,7 +155,7 @@ void lcd_init(void) {
 }
 
 // Anzeige des Cursors auf richtigem Display aktivieren
-void static updatecursor(void) {
+static void updatecursor(void) {
   if (LCD_ROWS_BOTTOM == 0 || cursor_y < LCD_ROWS_TOP) {
     lcd_write(LCD_UPPER,0,DISPLAY_ON | cursor_mode);
     lcd_write(LCD_LOWER,0,DISPLAY_ON);
@@ -191,6 +193,10 @@ void lcd_gotoxy(uint8_t x, uint8_t y) {
 }
 
 void lcd_putch(char c) {
+  if (c == '\n') {
+    lcd_gotoxy(0,(cursor_y+1) % LCD_ROWS);
+    return;
+  }
   lcd_write(cursor_controller,1,c);
   if (++cursor_x > LCD_COLUMNS-1)
     lcd_gotoxy(0,(cursor_y+1) % LCD_ROWS);
@@ -207,20 +213,15 @@ int lcd_putc(char c, FILE *stream) {
 }
 #endif
 
-void lcd_puts_P(prog_char *text) {
-  uint8_t ch;
+void lcd_puts_P(char *text) {
+  uint8_t c;
 
-  while ((ch = pgm_read_byte(text++))) {
-    if (ch == '\n') {
-      lcd_gotoxy(0,(cursor_y+1) % LCD_ROWS);
-    } else {
-      lcd_putch(ch);
-    }
-  }
+  while ((c = pgm_read_byte(text++)))
+      lcd_putch(c);
   updatecursor();
 }
 
-void lcd_putxy_P(uint8_t xpos, uint8_t ypos, prog_char *text) {
+void lcd_putxy_P(uint8_t xpos, uint8_t ypos, char *text) {
   if (xpos > (LCD_COLUMNS-1) || ypos > (LCD_ROWS-1)) return;
 
   lcd_gotoxy(xpos,ypos);

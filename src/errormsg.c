@@ -38,6 +38,7 @@
 #include "ustring.h"
 #include "utils.h"
 #include "errormsg.h"
+#include "menu.h"
 
 uint8_t current_error;
 uint8_t error_buffer[CONFIG_ERROR_BUFFER_SIZE];
@@ -270,12 +271,11 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
 
   /* Send message without the final 0x0d */
   display_errorchannel(msg - error_buffer, error_buffer);
+  lcd_update_disk_status();
 }
 
 /* Callback for the error channel buffer */
 uint8_t set_ok_message(buffer_t *buf) {
-  (void)buf;
-
   set_error(0);
   return 0;
 }

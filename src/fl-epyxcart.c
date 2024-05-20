@@ -50,7 +50,7 @@ bool load_epyxcart(UNUSED_PARAMETER) {
   /* Initial handshake */
   set_data(1);
   set_clock(0);
-  set_atn_irq(0);
+  set_iec_atn_irq(0);
 
   while (IEC_DATA)
     if (!IEC_ATN)

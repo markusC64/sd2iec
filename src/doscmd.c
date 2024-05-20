@@ -42,7 +42,7 @@
 #include "fileops.h"
 #include "filesystem.h"
 #include "flags.h"
-#include "iec.h"
+#include "bus.h"
 #include "led.h"
 #include "parser.h"
 #include "system.h"
@@ -53,10 +53,14 @@
 #include "utils.h"
 #include "wrapops.h"
 #include "doscmd.h"
+#include "menu.h"
 
 #define CURSOR_RIGHT 0x1d
 
 static FIL romfile;
+
+
+
 
 /* ---- Fastloader tables ---- */
 
@@ -94,6 +98,7 @@ struct fastloader_rxtx_s {
   fastloader_tx_t txfunc;
 };
 
+#ifdef CONFIG_HAVE_IEC
 static const PROGMEM struct fastloader_rxtx_s fl_rxtx_table[] = {
 #ifdef CONFIG_LOADER_GEOS
   [RXTX_GEOS_1MHZ]     = { geos_get_byte_1mhz,     geos_send_byte_1mhz     },
@@ -129,6 +134,7 @@ struct fastloader_crc_s {
   uint8_t  loadertype;
   uint8_t  rxtx;
 };
+
 
 static const PROGMEM struct fastloader_crc_s fl_crc_table[] = {
 #ifdef CONFIG_LOADER_TURBODISK
@@ -297,6 +303,7 @@ static const PROGMEM struct fastloader_crc_s fl_crc_table[] = {
 #endif
   { 0, FL_NONE, 0 }, // end marker
 };
+#endif // CONFIG_HAVE_IEC
 
 struct fastloader_handler_s {
   uint16_t             address;
@@ -467,6 +474,7 @@ struct fastloader_capture_s {
   uint8_t  buffer_id;
 };
 
+#ifdef CONFIG_HAVE_IEC
 static const PROGMEM struct fastloader_capture_s fl_capture_table[] = {
 #ifdef CONFIG_LOADER_GEOS
   { FL_GEOS_S1_64,  0x42a, 255, BUFFER_SYS_CAPTURE1 },
@@ -480,6 +488,7 @@ static const PROGMEM struct fastloader_capture_s fl_capture_table[] = {
 
   { FL_NONE, 0, 0, 0 }  // end marker
 };
+#endif // CONFIG_HAVE_IEC
 
 /* ---- Minimal drive rom emulation ---- */
 
@@ -529,10 +538,12 @@ date_t date_match_end;
 uint16_t datacrc = 0xffff;
 static fastloaderid_t previous_loader;
 
+#ifdef CONFIG_HAVE_IEC
 /* partial fastloader data capture */
 static uint16_t  capture_address, capture_remain;
 static uint8_t   capture_offset;
 static buffer_t *capture_buffer;
+#endif
 
 #ifdef CONFIG_STACK_TRACKING
 //FIXME: AVR-only code
@@ -821,8 +832,10 @@ void do_chdir(uint8_t *parsestr) {
 static void parse_chdir(void) {
   do_chdir(command_buffer + 2);
 
+  /* FIXME
   if (globalflags & AUTOSWAP_ACTIVE)
     set_changelist(NULL, NULLSTRING);
+  */
 }
 
 /* --- RD --- */
@@ -1151,8 +1164,10 @@ static void parse_changepart(void) {
   }
 
   current_part = part;
+  /* FIXME
   if (globalflags & AUTOSWAP_ACTIVE)
     set_changelist(NULL, NULLSTRING);
+  */
 
   display_current_part(current_part);
 
@@ -1480,6 +1495,7 @@ static void handle_memread(void) {
 }
 
 /* --- M-W --- */
+#ifdef CONFIG_HAVE_IEC
 /* helper function for copying to capture buffer, needed twice */
 static void capture_fl_data(uint16_t address, uint8_t length) {
   uint8_t dataofs = capture_address - address;
@@ -1606,6 +1622,9 @@ static void handle_memwrite(void) {
     uart_putcrlf();
   }
 }
+#else
+static inline void handle_memwrite(void) {}
+#endif /* #ifdef CONFIG_HAVE_IEC */
 
 /* --- M subparser --- */
 static void parse_memory(void) {
@@ -2131,15 +2150,19 @@ static void parse_timeread(void) {
   }
 }
 
+/* day of week calculation by M. Keith and T. Craver via
+   https://en.wikipedia.org/wiki/Determination_of_the_day_of_the_week
+
+   Please note that unlike struct tm time.tm_mon which stores months
+   in a 0-11 range, this function requires months in a 1-12 range
+*/
+uint8_t day_of_week(uint16_t y, uint8_t m, uint8_t d) {
+  y += 1900;
+  return (d+=m<3?y--:y-2,23*m/9+d+4+y/4-y/100+y/400)%7;
+}
+
 /* --- T-W --- */
 static void parse_timewrite(void) {
-
-  /* day of week calculation by M. Keith and T. Craver via */
-  /* https://en.wikipedia.org/wiki/Determination_of_the_day_of_the_week */
-  uint8_t day_of_week(uint16_t y, uint8_t m, uint8_t d) {
-    y += 1900;
-    return (d+=m<3?y--:y-2,23*m/9+d+4+y/4-y/100+y/400)%7;
-  }
 
   struct tm time;
   uint8_t i, *ptr;
@@ -2474,6 +2497,24 @@ static void parse_xcommand(void) {
       set_error(ERROR_SYNTAX_UNKNOWN);
     }
     break;
+#ifdef CONFIG_HW_ADDR_OR_BUTTONS
+  case 'M':
+    /* Enable or disable LCD menu system, used to switch
+       between buttons for menu usage and DIP switches
+       to set the device address */
+    str = command_buffer+2;
+    if (*str == '+') {
+      menu_system_enabled = true;
+    } else if (*str == '-') {
+      menu_system_enabled = false;
+    } else {
+      set_error(ERROR_SYNTAX_UNKNOWN);
+      break;
+    }
+    write_configuration();
+    system_reset();
+    break;
+#endif
 
   case 'W':
     /* Write configuration */
@@ -2500,7 +2541,7 @@ static void parse_xcommand(void) {
     if (parse_path(command_buffer+2, &path, &str, 0))
       return;
 
-    set_changelist(&path, str);
+    // FIXME set_changelist(&path, str);
     break;
 
   case '*':
@@ -2615,11 +2656,16 @@ void parse_doscommand(void) {
   }
 
 #ifdef CONFIG_COMMAND_CHANNEL_DUMP
+#  ifdef CONFIG_HAVE_IEC
   /* Debugging aid: Dump the whole command via serial */
   if (detected_loader == FL_NONE) {
     /* Dump only if no loader was detected because it may ruin the timing */
     uart_trace(command_buffer,0,command_length);
   }
+#  else
+     uart_flush(); uart_putcrlf();
+     uart_trace(command_buffer,0,command_length);
+#  endif
 #endif
 
   /* Remove one CR at end of command */

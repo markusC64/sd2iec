@@ -42,6 +42,11 @@
 #define D41_SIZE_MIN      D41_SIZE
 /* Max 7 additional tracks with 17 256 byte sectors each + 802 error bytes */
 #define D41_SIZE_MAX      (D41_SIZE_MIN + 7*17*256 + 802)
+#define D41_ERROR_OFFSET 174848
+#define D71_ERROR_OFFSET 349696
+#define D81_ERROR_OFFSET 819200
+#define D80_ERROR_OFFSET 533248
+#define D82_ERROR_OFFSET 1066496
 
 #define D41_BAM_TRACK           18
 #define D41_BAM_SECTOR          0
@@ -78,6 +83,13 @@
 #define DNP_LABEL_AREA_SIZE             (28-4+1)
 #define DNP_ID_OFFSET                    22
 
+#define D80_BAM_TRACK           38
+#define D80_DIR_TRACK           39
+#define D80_BAM_SECTOR          0
+#define D80_BAM_INTERLEAVE      3
+#define D80_BAM_BYTES_PER_TRACK 5
+#define D80_BAM_BITFIELD_BYTES  4
+
 /* used for error info only */
 #define MAX_SECTORS_PER_TRACK 40
 
@@ -108,6 +120,8 @@ static uint8_t d64_opendir(dh_t *dh, path_t *path);
 static void format_d41_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_d71_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_d81_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
+static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
+static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_dnp_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 
 /* ------------------------------------------------------------------------- */
@@ -129,6 +143,15 @@ static const PROGMEM struct param_s d81param = {
 static const PROGMEM struct param_s dnpparam = {
   1, 1, 0, 0, DNP_LABEL_OFFSET, DNP_ID_OFFSET, 1, 1, 0, format_dnp_image
 };
+
+static const PROGMEM struct param_s d80param = {
+  39, 1, 77, 77, 6, 0x18, 5, 3, 533248, format_d80_image
+};
+
+static const PROGMEM struct param_s d82param = {
+  39, 1, 154, 154, 6, 0x18, 5, 3,  1066496, format_d82_image
+};
+
 
 /**
  * get_param - get a format-dependent parameter
@@ -178,6 +201,20 @@ static uint16_t sector_lba(uint8_t part, uint8_t track, const uint8_t sector) {
 
   case D64_TYPE_DNP:
     return track*256 + sector;
+
+  case D64_TYPE_D80:
+  case D64_TYPE_D82:
+    if (track >= 78) {
+      offset = 2083;
+      track -= 77;
+    }
+    if (track < 39)
+      return track*29 + sector + offset;
+    if (track < 53)
+      return 39*29 + (track-39)*27 + sector + offset;
+    if (track < 64)
+      return 39*29 + 14*27 + (track-53)*25 + sector + offset;
+    return 39*29 + 14*27 + 11*25 + (track-64)*23 + sector + offset;
   }
 }
 
@@ -222,6 +259,18 @@ uint16_t d64_sectors_per_track(uint8_t part, uint8_t track) {
 
   case D64_TYPE_DNP:
     return 256;
+
+  case D64_TYPE_D80:
+  case D64_TYPE_D82:
+    if (track > 77)
+       track -= 77;
+    if (track < 40)
+       return 29;
+    if (track < 54)
+       return 27;
+    if (track < 65)
+       return 25;
+    return 23;
   }
 }
 
@@ -492,6 +541,17 @@ static uint8_t move_bam_window(uint8_t part, uint8_t track, bamdata_t type, uint
     s   = DNP_BAM_SECTOR + (track >> 3);
     pos = (track & 0x07) * 32;
     break;
+
+  case D64_TYPE_D80:
+  case D64_TYPE_D82:
+    t    = D80_BAM_TRACK;
+    s    = D80_BAM_SECTOR;
+    while (track > 50) {
+      s += D80_BAM_INTERLEAVE;
+      track -= 50;
+    }
+    pos = 1 + D80_BAM_BYTES_PER_TRACK * track + (type == BAM_BITFIELD ?  1:0);
+    break;
   }
 
   if (!bam_buffer_match(bam_buffer, part, t, s)) {
@@ -597,6 +657,8 @@ static uint16_t sectors_free(uint8_t part, uint8_t track) {
   case D64_TYPE_D71:
   case D64_TYPE_D81:
   case D64_TYPE_D41:
+  case D64_TYPE_D80:
+  case D64_TYPE_D82:
   default:
     if(move_bam_window(part,track,BAM_FREECOUNT,&trackmap))
       return 0;
@@ -1194,7 +1256,9 @@ static uint8_t errorcache_read(uint8_t part, uint8_t track) {
   switch (partition[part].imagetype & D64_TYPE_MASK) {
   case D64_TYPE_D41:
   case D64_TYPE_D71:
+  case D64_TYPE_D80:
   case D64_TYPE_D81:
+  case D64_TYPE_D82:
     if (image_read(part, pos, errorcache.errors, d64_sectors_per_track(part, track)) >= 2)
       return 1;
     break;
@@ -1276,6 +1340,26 @@ uint8_t d64_mount(path_t *path, uint8_t *name) {
     imagetype = D64_TYPE_D81 | D64_HAS_ERRORINFO;
     memcpy_P(&partition[part].d64data, &d81param, sizeof(struct param_s));
     trk = 18; sec = 0;
+    break;
+
+  case 533248:
+    imagetype = D64_TYPE_D80;
+    memcpy_P(&partition[part].d64data, &d80param, sizeof(struct param_s));
+    break;
+
+  case 535331:
+    imagetype = D64_TYPE_D80 | D64_HAS_ERRORINFO;
+    memcpy_P(&partition[part].d64data, &d80param, sizeof(struct param_s));
+    break;
+
+  case 1066496:
+    imagetype = D64_TYPE_D82;
+    memcpy_P(&partition[part].d64data, &d82param, sizeof(struct param_s));
+    break;
+
+  case 1070662:
+    imagetype = D64_TYPE_D82 | D64_HAS_ERRORINFO;
+    memcpy_P(&partition[part].d64data, &d82param, sizeof(struct param_s));
     break;
 
   default:
@@ -1501,6 +1585,11 @@ static uint16_t d64_freeblocks(uint8_t part) {
         continue; // continue the for loop
       break;      // break out of the switch
 
+    case D64_TYPE_D80:
+    case D64_TYPE_D82:
+      if (i == D80_DIR_TRACK)
+        continue; // continue the for loop
+      break;      // break out of the switch
     }
 
     if ((partition[part].imagetype & D64_TYPE_MASK)
@@ -2245,6 +2334,14 @@ static void format_dnp_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
   clear_dir_sector(part, 1, DNP_ROOTDIR_SECTOR, buf->data);
 }
 
+static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
+  // TODO: implement D80 format
+}
+
+static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
+}
+  // TODO: implement D82 format
+
 static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
   buffer_t *buf;
   uint8_t  part = path->part;
@@ -2305,7 +2402,6 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
     /* Read the old ID into the buffer */
     if (d64_getid(path, idbuf))
       return;
-
    if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
     if (d64_format_track(part, buf, 53))
       return;

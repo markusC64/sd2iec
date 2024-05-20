@@ -79,7 +79,7 @@ bool load_dreamload(UNUSED_PARAMETER) {
   /* disable IRQs while loading the final code, so no jobcodes are read */
   ATOMIC_BLOCK( ATOMIC_FORCEON ) {
     set_clock_irq(0);
-    set_atn_irq(0);
+    set_iec_atn_irq(0);
 
     /* Release clock and data */
     set_clock(1);
@@ -95,7 +95,7 @@ bool load_dreamload(UNUSED_PARAMETER) {
     }
 
     if ((type == 0xac) || (type == 0xdc)) {
-      set_atn_irq(1);
+      set_iec_atn_irq(1);
       detected_loader = FL_DREAMLOAD_OLD;
     } else {
       set_clock_irq(1);
@@ -166,7 +166,7 @@ bool load_dreamload(UNUSED_PARAMETER) {
 error:
   free_buffer(buf);
   set_clock_irq(0);
-  set_atn_irq(0);
+  set_iec_atn_irq(0);
 
   return true;
 }

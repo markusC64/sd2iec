@@ -38,7 +38,7 @@ $(OBJDIR):
 	$(E) "  MKDIR  $(OBJDIR)"
 	-$(Q)mkdir $(OBJDIR)
 
-copy clean fuses program: FORCE | $(OBJDIR) $(OBJDIR)/make.inc
+copy clean fuses program delete-eeprom: FORCE | $(OBJDIR) $(OBJDIR)/make.inc
 	$(Q)$(MAKE) --no-print-directory -f scripts/Makefile.main $@
 
 FORCE: ;

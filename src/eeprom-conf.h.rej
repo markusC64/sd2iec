@@ -1,0 +1,11 @@
+--- src/eeprom-conf.h
++++ src/eeprom-conf.h
+@@ -131,7 +129,7 @@
+   /* write just the changed bytes to the EEPROM */
+ 
+   uint8_t *orig = EEPROMFS_CMP_BUFFER;
+-  uint8_t i, nonmatch_start;
++  uint8_t i, nonmatch_start = 0;
+   bool cur_nonmatching = false;
+ 
+   /* read current entry to minimize writes */

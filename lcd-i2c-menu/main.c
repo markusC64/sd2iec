@@ -1,5 +1,7 @@
-/* sd2iec - SD/MMC to Commodore serial bus interface/controller
+/* NODISKEMU - SD/MMC to IEEE-488 interface/controller
    Copyright (C) 2007-2012  Ingo Korb <ingo@akana.de>
+
+   NODISKEMU is a fork of sd2iec by Ingo Korb (et al.), http://sd2iec.de
 
    Inspired by MMC2IEC by Lars Pontoppidan et al.
 
@@ -121,7 +123,7 @@ static void pet2asc(uint8_t *buf) {
  * PETSCII in-place. Modified for LCD use, substitutes the custom
  * "left arrow" character 0x01 with _.
  */
-static void asc2pet(uint8_t *buf) {
+void asc2pet(uint8_t *buf) {
   uint8_t ch;
   while (*buf) {
     ch = *buf;
@@ -469,7 +471,8 @@ static void update_display(void) {
 
 int main(void) {
   // Disable JTAG
-#if defined __AVR_ATmega644__ || defined __AVR_ATmega644P__ || defined __AVR_ATmega2561__
+#if defined __AVR_ATmega644__   || defined __AVR_ATmega644P__ || \
+    defined __AVR_ATmega1284P__ || defined __AVR_ATmega2561__
   asm volatile("in  r24, %0\n"
                "ori r24, 0x80\n"
                "out %0, r24\n"
@@ -488,7 +491,6 @@ int main(void) {
   TWCR = _BV(TWEA) | _BV(TWEN) | _BV(TWIE);
 
   INTRQ_SETUP();
-
   lcd_init();
   lcd_customchar(1,0,4,8,31,8,4,0,0); // define left arrow
   menu_init();

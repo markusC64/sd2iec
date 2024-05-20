@@ -65,9 +65,11 @@ typedef enum {
    IMG_IS_D41  = 1<<2,
    IMG_IS_D71  = 1<<3,
    IMG_IS_D81  = 1<<4,
+   IMG_IS_D80  = 1<<5,
+   IMG_IS_D82  = 1<<6,
 } imgtype_t;
 
-#define IMG_IS_DISK (IMG_IS_DNP|IMG_IS_D41|IMG_IS_D71|IMG_IS_D81)
+#define IMG_IS_DISK (IMG_IS_DNP|IMG_IS_D41|IMG_IS_D71|IMG_IS_D81|IMG_IS_D80|IMG_IS_D82)
 
 imgtype_t check_imageext(uint8_t *name);
 
