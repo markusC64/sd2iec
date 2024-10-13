@@ -124,7 +124,11 @@ void parse_error(FRESULT res, uint8_t readflag) {
     break;
 
   case FR_DENIED:
-    set_error_ts(ERROR_DISK_FULL,res,0);
+    /* Just a random READ ERROR */
+    if (readflag)
+      set_error_ts(ERROR_READ_NOHEADER,res,0);
+    else
+      set_error_ts(ERROR_WRITE_PROTECT,res,0);
     break;
 
   case FR_IS_READONLY:
