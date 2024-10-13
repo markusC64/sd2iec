@@ -1663,14 +1663,14 @@ uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uin
   if (offset != (LONG)-1) {
     res = f_lseek(&partition[part].imagehandle, offset);
     if (res != FR_OK) {
-      parse_error(res,0);
+      parse_error(res,1);
       return 2;
     }
   }
 
   res = f_write(&partition[part].imagehandle, buffer, bytes, &byteswritten);
   if (res != FR_OK) {
-    parse_error(res,1);
+    parse_error(res,0);
     return 2;
   }
 
