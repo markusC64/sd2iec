@@ -19,17 +19,9 @@ jobs:
          REV=$(git rev-parse --short HEAD | tr a-z A-Z)
          VER=94
          PLUS=+
-         make CONFIG=configs/config-uIEC PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
-         make CONFIG=configs/config-uIEC3 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
-         make CONFIG=configs/config-larsp PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
-         make CONFIG=configs/config-sw1 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
-         make CONFIG=configs/config-sw2 PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
+         make CONFIG=configs/config-petSD+ PRERELEASE=ATENTDEAD0-${VER}${PLUS}-$REV
          mkdir bin
-         cp obj-m1281-uIEC/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC.bin
-         cp obj-m1281-uIEC3/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1281-uIEC3.bin
-         cp obj-m1284p-larsp/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-larsp.bin
-         cp obj-m1284p-sw1/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-sw1.bin
-         cp obj-m1284p-sw2/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-sw2.bin
+         cp obj-m1284p-petSD+/NODISKEMU.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-petSD+.bin
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
