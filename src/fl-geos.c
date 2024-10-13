@@ -173,6 +173,14 @@ static void geos_read_sector(uint8_t track, uint8_t sector, buffer_t *buf) {
   uart_putcrlf();
   set_error(ERROR_OK);
   read_sector(buf, current_part, track, sector);
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_DNP && track == 1 && sector == 1)
+     buf->data[2] = 0x48;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D41 && track == 18 && sector == 0)
+     buf->data[2] = 0x41;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D71 && track == 18 && sector == 0)
+     buf->data[2] = 0x41;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D81 && track == 40 && sector == 0)
+     buf->data[2] = 0x44;
 }
 
 /* GEOS WRITE operation */
@@ -592,6 +600,14 @@ static void wheels_read_sector(uint8_t track, uint8_t sector, buffer_t *buf, uin
 
   set_error(ERROR_OK);
   read_sector(buf, current_part, track, sector);
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_DNP && track == 1 && sector == 1)
+     buf->data[2] = 0x48;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D41 && track == 18 && sector == 0)
+     buf->data[2] = 0x41;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D71 && track == 18 && sector == 0)
+     buf->data[2] = 0x41;
+  if ((partition[current_part].imagetype & D64_TYPE_MASK) == D64_TYPE_D81 && track == 40 && sector == 0)
+     buf->data[2] = 0x44;
   wheels_transmit_datablock(buf->data, bytes);
   wheels_transmit_status();
 }
