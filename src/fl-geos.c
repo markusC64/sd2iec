@@ -171,7 +171,7 @@ static void geos_read_sector(uint8_t track, uint8_t sector, buffer_t *buf) {
   uart_putc('/');
   uart_puthex(sector);
   uart_putcrlf();
-
+  set_error(ERROR_OK);
   read_sector(buf, current_part, track, sector);
 }
 
@@ -190,6 +190,7 @@ static void geos_write_sector_41(uint8_t track, uint8_t sector, buffer_t *buf) {
   geos_receive_lenblock(buf->data);
 
   /* Write to image */
+  set_error(ERROR_OK);
   write_sector(buf, current_part, track, sector);
 
   /* Reset "unwritten data" feedback */
@@ -211,6 +212,7 @@ static void geos_write_sector_71(uint8_t track, uint8_t sector, buffer_t *buf) {
   geos_receive_datablock(buf->data, 256);
 
   /* Write to image */
+  set_error(ERROR_OK);
   write_sector(buf, current_part, track, sector);
 
   /* Send status */
@@ -337,7 +339,7 @@ static void geos_send_chain(uint8_t track, uint8_t sector,
                             buffer_t *buf, uint8_t *key) {
   uint8_t bytes;
   uint8_t *keyptr,*dataptr;
-
+  set_error(ERROR_OK);
   do {
     /* Read sector - no error recovery on computer side */
     read_sector(buf, current_part, track, sector);
@@ -588,6 +590,7 @@ static void wheels_read_sector(uint8_t track, uint8_t sector, buffer_t *buf, uin
   uart_puthex(sector);
   uart_putcrlf();
 
+  set_error(ERROR_OK);
   read_sector(buf, current_part, track, sector);
   wheels_transmit_datablock(buf->data, bytes);
   wheels_transmit_status();
