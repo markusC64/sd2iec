@@ -32,7 +32,7 @@ jobs:
          cp obj-m1284p-sw2/sd2iec.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-m1284p-sw2.bin
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sd2iec-firmware
         path: bin/
