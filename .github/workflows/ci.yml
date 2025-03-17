@@ -24,7 +24,7 @@ jobs:
          cp obj-m1284p-petSD+/NODISKEMU.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-petSD+.bin
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sd2iec-firmware
         path: bin/
