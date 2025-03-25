@@ -544,6 +544,7 @@ UCHAR make_dirfile (     /* 1: error - detected an invalid format, '\0'or'/': ne
         (t == 8) ? (b &= (BYTE)~0x08) : (b &= (BYTE)~0x10);
       if (c >= 'a' && c <= 'z') {          /* Convert to upper case */
         c -= 0x20;
+        *lfn=TRUE;
         if (_USE_NTFLAG) (t == 8) ? (a |= 0x08) : (a |= 0x10);
       }
     }
@@ -1192,7 +1193,8 @@ void create_short_name(
 
   memset(buf,' ',11);
   buf[11]=0;
-  if(name[0]!='.') {
+  //if(name[0]!='.') {
+  if(name[0]!='.' || (name[1] && (name[1]!='.' || name[2]))) {
     while(--j) { /* find the last '.' */
       if(name[j]=='.') break;
     }
