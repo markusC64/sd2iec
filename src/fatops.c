@@ -306,19 +306,12 @@ static bool is_valid_fat_char(const uint8_t c) {
  */
 static bool is_valid_fat_name(const uint8_t *name) {
   const uint8_t *ptr = name;
-  unsigned char dots = 0;
 
   /* check all characters for validity */
   while (*ptr) {
-    if (*ptr == '.')
-      dots++;
-
     if (!is_valid_fat_char(*ptr++))
       return false;
   }
-
-  if (dots > 1)
-    return false;
 
   /* check the last character */
   ptr--;
