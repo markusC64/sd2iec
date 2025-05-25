@@ -1753,6 +1753,28 @@ static void parse_rename(void) {
     return;
   }
 
+    int match = 1;
+
+   {
+      unsigned char *a = (unsigned char *) oldname;
+      unsigned char *b = (unsigned char *) newname;
+
+      while (match)
+      {
+         unsigned char aa = *a;
+         unsigned char bb = *b;
+         if (bb >= ('A'+128) && bb <= ('Z'+128))          /* Convert to upper case */
+            bb -= 0x80;
+         if (aa >= ('A'+128) && aa <= ('Z'+128))          /* Convert to upper case */
+            aa -= 0x20;
+         if(aa!= bb)
+            match=0;
+         if (!aa) break;
+         if (!bb) break;
+         a++; b++;
+      }
+   }
+
   /* Don't allow an empty new name */
   /* The 1541 renames the file to "=" in this case, but I consider that a bug. */
   if (ustrlen(newname) == 0) {
@@ -1761,15 +1783,17 @@ static void parse_rename(void) {
   }
 
   /* Check if the new name already exists */
-  res = first_match(&newpath, newname, FLAG_HIDDEN, &dent);
-  if (res == 0) {
-    set_error(ERROR_FILE_EXISTS);
-    return;
-  }
+  if (!match) {
+     res = first_match(&newpath, newname, FLAG_HIDDEN, &dent);
+     if (res == 0) {
+       set_error(ERROR_FILE_EXISTS);
+       return;
+     }
 
-  if (res > 0)
-    /* first_match generated an error other than File Not Found, abort */
-    return;
+     if (res > 0)
+       /* first_match generated an error other than File Not Found, abort */
+       return;
+  }
 
   /* Clear the FNF */
   set_error(ERROR_OK);
