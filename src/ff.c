@@ -2680,8 +2680,23 @@ FRESULT f_rename (
 
    unsigned char *a = (unsigned char *) path_old;
    unsigned char *b = (unsigned char *) path_new;
+   unsigned char *c;
    while (*a == '/') a++;
    while (*b == '/') b++;
+
+   c=a;
+   while (*c)
+   {
+     if (*c == '/') a=c+1;
+     c++;
+   }
+   c=b;
+   while (*c)
+   {
+     if (*c == '/') b=c+1;
+     c++;
+   }
+   
    while (match)
    {
       unsigned char aa = *a;
