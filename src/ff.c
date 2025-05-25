@@ -2584,7 +2584,7 @@ FRESULT f_utime (
 /* Rename File/Directory                                                 */
 /*-----------------------------------------------------------------------*/
 
-FRESULT f_rename (
+FRESULT f_rename_internal (
 #if _USE_DRIVE_PREFIX == 0
   FATFS *fs,              /* Pointer to file system object */
 #endif
@@ -2666,6 +2666,52 @@ FRESULT f_rename (
 
   return sync(fs);
 }
+
+FRESULT f_rename (
+#if _USE_DRIVE_PREFIX == 0
+  FATFS *fs,              /* Pointer to file system object */
+#endif
+  const UCHAR *path_old,   /* Pointer to the old name */
+  const UCHAR *path_new    /* Pointer to the new name */
+)
+{
+    // Case-insensitive Vergleich
+    int match = 1;
+
+   unsigned char *a = (unsigned char *) path_old;
+   unsigned char *b = (unsigned char *) path_new;
+   while (*a == '/') a++;
+   while (*b == '/') b++;
+   while (match)
+   {
+      unsigned char aa = *a;
+      unsigned char bb = *b;
+      if (bb >= 'a' && bb <= 'z')          /* Convert to upper case */
+         bb -= 0x20;
+      if (aa >= 'a' && aa <= 'z')          /* Convert to upper case */
+         aa -= 0x20;
+      if(aa!= bb)
+         match=0;
+      if (!aa) break;
+      if (!bb) break;
+      a++; b++;
+   }
+
+    if (match) { // strcasecmp((const char*)path_old, (const char*)path_new) == 0) {
+        // Zielname unterscheidet sich nur durch Groß/Kleinschreibung
+        const char* tempname = "_TMPNAME.TMP";  // muss garantiert konfliktfrei sein
+
+        FRESULT res;
+        res = f_rename_internal(fs, path_old, (const UCHAR*)tempname);
+        if (res != FR_OK) return res;
+
+        return f_rename_internal(fs, (const UCHAR*)tempname, path_new);
+    } else {
+        // normaler Fall: Pfade unterscheiden sich vollständig
+        return f_rename_internal(fs, path_old, path_new);
+    }
+}
+
 
 #endif /* !_FS_READONLY */
 #endif /* _FS_MINIMIZE == 0 */
