@@ -304,8 +304,17 @@ static bool is_valid_fat_char(const uint8_t c) {
  * This function checks if @name is a valid name for a FAT
  * file. Returns true if it is, false if not.
  */
+
+static const char *reserved_names[] = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    NULL
+  };
+
 static bool is_valid_fat_name(const uint8_t *name) {
   const uint8_t *ptr = name;
+  int i;
 
   /* check all characters for validity */
   while (*ptr) {
@@ -321,6 +330,32 @@ static bool is_valid_fat_name(const uint8_t *name) {
 
   if (*ptr == '.')
     return false;
+
+   for (i = 0; reserved_names[i] != NULL; i++) {
+      int match=1;
+      unsigned char *a = (unsigned char *) name;
+      unsigned char *b = (unsigned char *) reserved_names[i];
+
+      while (match)
+      {
+         unsigned char aa = *a;
+         unsigned char bb = *b;
+         if (bb >= 'a' && bb <= 'z')          /* Convert to upper case */
+            bb -= 0x20;
+         if (aa >= 'a' && aa <= 'z')          /* Convert to upper case */
+            aa -= 0x20;
+         if (!bb && aa == '.')
+            aa=0;  
+         if(aa!= bb)
+            match=0;
+         if (!aa) break;
+         if (!bb) break;
+         a++; b++;
+      }
+      
+      if (match) return false;
+  }
+
 
   return true;
 }
@@ -355,6 +390,8 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
       !is_valid_fat_name(name))) {
 
       uint8_t *x00ext = NULL;
+      uint8_t *nameBak = name;
+      int i;
 
       /* Append .[PSUR]00 suffix to the file name */
       int len=0;
@@ -374,6 +411,31 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
       x00ext = name;
       *name++ = '0';
       *name   = 0;
+
+   for (i = 0; reserved_names[i] != NULL; i++) {
+      int match=1;
+      unsigned char *a = (unsigned char *) nameBak;
+      unsigned char *b = (unsigned char *) reserved_names[i];
+
+      while (match)
+      {
+         unsigned char aa = *a;
+         unsigned char bb = *b;
+         if (bb >= 'a' && bb <= 'z')          /* Convert to upper case */
+            bb -= 0x20;
+         if (aa >= 'a' && aa <= 'z')          /* Convert to upper case */
+            aa -= 0x20;
+         if (!bb && aa == '.')
+            aa=0;  
+         if(aa!= bb)
+            match=0;
+         if (!aa) break;
+         if (!bb) break;
+         a++; b++;
+      }
+      
+      if (match) nameBak[0]='_';
+  }
 
       return x00ext;
   }
