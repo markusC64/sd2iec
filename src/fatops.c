@@ -331,7 +331,7 @@ static bool is_valid_fat_name(const uint8_t *name) {
  * character of the PC64 file extension if it was
  * created or NULL if not.
  */
-static uint8_t* build_name(uint8_t *name, uint8_t type) {
+static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
   /* convert to PETSCII */
   pet2asc(name);
 
@@ -346,9 +346,9 @@ static uint8_t* build_name(uint8_t *name, uint8_t type) {
     return NULL;
 
   /* PC64 mode or invalid FAT name? */
-  if ((file_extension_mode == 1 && type != TYPE_PRG) ||
+  if ( !isRename && ((file_extension_mode == 1 && type != TYPE_PRG) ||
       file_extension_mode == 2 ||
-      !is_valid_fat_name(name)) {
+      !is_valid_fat_name(name))) {
 
       uint8_t *x00ext = NULL;
 
@@ -372,6 +372,12 @@ static uint8_t* build_name(uint8_t *name, uint8_t type) {
       *name   = 0;
 
       return x00ext;
+  }
+  
+  if (!is_valid_fat_name(name))
+  {
+     *name = 0;
+     return NULL;
   }
 
   /* type-suffix mode? */
@@ -708,7 +714,7 @@ FRESULT create_file(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf
 #endif
   {
     ustrcpy(ops_scratch, dent->name);
-    x00ext = build_name(ops_scratch, type);
+    x00ext = build_name(ops_scratch, type, 0);
     name = ops_scratch;
   }
 
@@ -1449,7 +1455,13 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     case EXT_IS_TYPE:
       /* Keep type extension */
       ustrcpy(ops_scratch, newname);
-      build_name(ops_scratch, dent->typeflags & TYPE_MASK);
+      build_name(ops_scratch, dent->typeflags & TYPE_MASK, 1);
+      if (!*ops_scratch)
+      {
+         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+         return;
+      }
+      
       res = f_rename(&partition[path->part].fatfs, dent->pvt.fat.realname, ops_scratch);
       if (res != FR_OK)
         parse_error(res, 0);
