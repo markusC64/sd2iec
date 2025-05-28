@@ -394,16 +394,16 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
       int i;
 
       /* Append .[PSUR]00 suffix to the file name */
-      int len=0;
+      //int len=0;
       while (*name) {
         if (is_valid_fat_char(*name) && *name != '.') {
           name++;
         } else {
           *name++ = '_';
         }
-        len++;
-        if (len == 8)
-           break;
+        //len++;
+        //if (len == 8)
+        //   break;
       }
       *name++ = '.';
       *name++ = pgm_read_byte(filetypes+3*type);
