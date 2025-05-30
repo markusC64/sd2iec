@@ -993,9 +993,9 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   /* File type */
   if (finfo.fattrib & AM_DIR) {
     dent->typeflags = TYPE_DIR;
-    /* Hide directories starting with . */
-    if (*nameptr == '.')
-      dent->typeflags |= FLAG_HIDDEN;
+    // /* Hide directories starting with . */
+    //if (*nameptr == '.')
+    //  dent->typeflags |= FLAG_HIDDEN;
 
   } else {
     /* Search for the file extension */
