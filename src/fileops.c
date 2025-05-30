@@ -1027,6 +1027,14 @@ void file_open(uint8_t secondary) {
     } else {
       /* Normal write or non-existing rewrite */
       /* Doesn't exist: Copy name to dent */
+      if (ustrchr(fname, '*') || ustrchr(fname, '?'))
+      {
+         if (command_buffer[0] == '@')
+            set_error(64);
+         else
+            set_error(33);
+         return;
+      }
       memset(&dent, 0, sizeof(dent));
       ustrncpy(dent.name, fname, CBM_NAME_LENGTH);
       set_error(ERROR_OK); // because first_match has set FNF
