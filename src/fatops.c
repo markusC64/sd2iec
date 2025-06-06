@@ -67,6 +67,157 @@ uint8_t file_extension_mode;
 /*  Utility functions                                                        */
 /* ------------------------------------------------------------------------- */
 
+static const char *reserved_names[] = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    NULL
+  };
+
+
+static bool hex2bin(char c, uint8_t* out)
+{
+    if ((c >= '0') && (c <= '9')) {
+        *out = (uint8_t)(c - '0');
+        return true;
+    }
+    if ((c >= 'A') && (c <= 'F')) {
+        *out = (uint8_t)(c - 'A') + 10;
+        return true;
+    }
+    if ((c >= 'a') && (c <= 'f')) {
+        *out = (uint8_t)(c - 'a') + 10;
+        return true;
+    }
+    return false;
+}
+
+void petscii_to_fat(const char *pet, char *fat, int maxlen)
+{
+    int match=0, i;
+     for (i = 0; reserved_names[i] != NULL; i++) {
+        match=1;
+        unsigned char *a = (unsigned char *) pet;
+        unsigned char *b = (unsigned char *) reserved_names[i];
+
+        while (match)
+        {
+           unsigned char aa = *a;
+           unsigned char bb = *b;
+           if (!bb && aa == '.')
+              aa=0;  
+           if(aa!= bb)
+              match=0;
+           if (!aa) break;
+           if (!bb) break;
+           a++; b++;
+        }
+      
+        if (match) break;
+     }
+     if (match) {
+        fat[0] = '{';
+        fat[1] = '}';
+     }
+
+    // clear output string
+    const char *hex = "0123456789ABCDEF";
+    bool first = true;
+    bool escape = false;
+    i = match ? 2 : 0;
+    while(*pet) {
+        char p = *(pet++);
+        if ((p < 32) || (p >= 96) || (p == ':') || (p == '/') ||
+                (p == '\\') || (p == '*') || (p == '\x22') ||
+                (p == '<') || (p == '>') || (p == '?') || (first && p == '.')) {  // '|' > 96 ;)
+
+            if ((i + 4) >= maxlen) {
+                break;
+            }
+            if (!escape) {
+                fat[i++] = '{';
+                escape = true;
+            }
+            fat[i++] = hex[((uint8_t)p) >> 4];
+            fat[i++] = hex[p & 15];
+        } else {
+            if ((i + 2) >= maxlen) {
+                break;
+            }
+            if (escape) {
+                fat[i++] = '}';
+                escape = false;
+            }
+            fat[i++] = p;
+        }
+        first = false;
+    }
+    if (escape) {
+        fat[i++] = '}';
+        escape = false;
+    }
+    fat[i] = 0;
+}
+
+void fat_to_petscii(const char *fat, bool cutExt, char *pet, int len, bool term)
+{
+    int i = 0, k = 0;
+    bool escape = false;
+    int max = strlen(fat);
+
+    if (cutExt) {
+        for(int j=max-1;j>=max-4;j--) {
+            if(fat[j] == '.') {
+                max = j;
+                break;
+            }
+        }
+    }
+
+    while(fat[k] && (k < max) && (i < len)) {
+        char f = fat[k];
+        if (f == '{') {
+            escape = true;
+            k++;
+        }
+        if (escape) {
+            char h = fat[k+0];
+            char l = fat[k+1];
+            if (!h || !l) {
+                break;
+            }
+            uint8_t hb, lb;
+            if (!hex2bin(h, &hb) || !hex2bin(l, &lb)) {
+                escape = false;
+                // do not advance
+            } else {
+                pet[i++] = (hb << 4) | lb;
+                k += 2;
+            }
+        } else {
+            if (f == '}') {
+                escape = false;
+                k++;
+            } else {
+                pet[i++] = toupper(f);
+                k++;
+            }
+        }
+    }
+    if (term) {
+        pet[i] = 0;
+    }
+}
+
+
+
+
+
+
+
+
+
+
 /**
  * parse_error - translates a ff FRESULT into a commodore error message
  * @res     : FRESULT to be translated
@@ -301,13 +452,6 @@ static bool is_valid_fat_char(const uint8_t c) {
  * file. Returns true if it is, false if not.
  */
 
-static const char *reserved_names[] = {
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-    NULL
-  };
-
 static bool is_valid_fat_name(const uint8_t *name) {
   const uint8_t *ptr = name;
   int i;
@@ -366,7 +510,20 @@ static bool is_valid_fat_name(const uint8_t *name) {
  * character of the PC64 file extension if it was
  * created or NULL if not.
  */
+static char fatfs_yAbuffer[45];
+
 static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
+  if (file_extension_mode == 5)
+  {
+     petscii_to_fat((const char*)name, fatfs_yAbuffer, 40);
+     memcpy(name, fatfs_yAbuffer, 45);
+     if (type == 0) return NULL; 
+     while (*name) name++;
+     *name++ = '.';
+     memcpy_P(name, filetypes + TYPE_LENGTH * (type & EXT_TYPE_MASK), TYPE_LENGTH);
+     *(name+3) = 0;
+     return NULL;
+  }
   /* convert to PETSCII */
   pet2asc(name);
 
@@ -441,6 +598,9 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
      *name = 0;
      return NULL;
   }
+
+  if (type == 0)
+     return NULL;
 
   /* type-suffix mode? */
   if ((file_extension_mode == 3 && type != TYPE_PRG) ||
@@ -978,12 +1138,19 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   /* Copy name */
   ustrcpy(dent->pvt.fat.realname, finfo.fname);
 
-  if (!finfo.lfn[0] || ustrlen(finfo.lfn) > CBM_NAME_LENGTH+4) {
+  unsigned int maxLen = file_extension_mode == 5 ? 44 : CBM_NAME_LENGTH+4;  
+
+  if (!finfo.lfn[0] || ustrlen(finfo.lfn) > maxLen) {
     nameptr = finfo.fname;
+    if(file_extension_mode == 5)
+       fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
   } else {
     /* Convert only LFNs to PETSCII, 8.3 are always upper-case */
     nameptr = finfo.lfn;
-    asc2pet(nameptr);
+    if(file_extension_mode == 5)
+       fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
+    else
+       asc2pet(nameptr);
   }
 
   /* File type */
@@ -1229,7 +1396,13 @@ void fat_mkdir(path_t *path, uint8_t *dirname) {
   FRESULT res;
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
-  pet2asc(dirname);
+  if (file_extension_mode == 5)
+  {
+     petscii_to_fat((const char*)dirname, fatfs_yAbuffer, 40);
+     memcpy(dirname, fatfs_yAbuffer, 45); 
+  }
+  else
+     pet2asc(dirname);
   res = f_mkdir(&partition[path->part].fatfs, dirname);
   parse_error(res,0);
 }
@@ -1530,10 +1703,15 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       break;
 
     default:
-      /* Normal rename */
-      pet2asc(dent->name);
-      pet2asc(newname);
-      res = f_rename(&partition[path->part].fatfs, dent->name, newname);
+      ustrcpy(ops_scratch, newname);
+      build_name(ops_scratch, 0, 1);
+      if (!*ops_scratch)
+      {
+         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+         return;
+      }
+      
+      res = f_rename(&partition[path->part].fatfs, dent->pvt.fat.realname, ops_scratch);
       if (res != FR_OK)
         parse_error(res, 0);
       break;

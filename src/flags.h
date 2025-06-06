@@ -20,7 +20,7 @@
 
 
    flags.h: Definitions for some global flags
-
+GPIOR0
 */
 
 #ifndef FLAGS_H
@@ -29,6 +29,7 @@
 #ifdef __AVR__
 /* GPIOR0 is a bit-addressable register reserved for user data */
 #  define globalflags (GPIOR0)
+#  define globalflagsInt (GPIOR1)
 #else
 /* Global flags, variable defined in doscmd.c */
 extern uint8_t globalflags;
@@ -42,6 +43,7 @@ extern uint8_t globalflags;
 
 /* permanent (EEPROM-saved) flags */
 /* 1<<1 was JIFFY_ENABLED */
+#define CHECK_TYPE       (1<<0)
 #define D64_WITH_HIDDEN  (1<<1)
 #define EXTENSION_HIDING (1<<3)
 #define POSTMATCH        (1<<4)

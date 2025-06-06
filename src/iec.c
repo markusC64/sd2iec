@@ -270,7 +270,7 @@ static uint8_t iec_putc(uint8_t data, const uint8_t with_eoi) {
     set_data(data & 1<<i);
     delay_us(22);     // calculated
     set_clock(1);
-    if (globalflags & VC20MODE)
+    if (globalflagsInt & VC20MODE)
       delay_us(34);   // Calculated delay
     else
       delay_us(75);   // Calculated delay

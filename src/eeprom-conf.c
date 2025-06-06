@@ -93,6 +93,9 @@ static EEMEM struct {
  *   - bad CRC
  *   - device addr jumper changed since last reboot
  */
+ 
+ extern int8_t lockXE;
+ 
 void read_configuration(void) {
   uint_fast16_t i,size;
   uint8_t checksum, tmp;
@@ -143,9 +146,7 @@ void read_configuration(void) {
 #endif
 
   tmp = eeprom_read_byte(&storedconfig.global_flags);
-  globalflags &= (uint8_t)~(POSTMATCH | FASTFORMAT |
-                            EXTENSION_HIDING | D64_WITH_HIDDEN);
-  globalflags |= tmp;
+  globalflags = tmp;
 
   uint8_t current_hw_addr = device_hw_address();
   uint8_t stored_hw_addr  = eeprom_read_byte(&storedconfig.hardaddress);
@@ -160,7 +161,9 @@ void read_configuration(void) {
   printf("stored  hw addr: %d, stored sw addr: %d\r\n", stored_hw_addr,
       stored_sw_addr);
 
-  file_extension_mode = eeprom_read_byte(&storedconfig.fileexts);
+  tmp = eeprom_read_byte(&storedconfig.fileexts);
+  file_extension_mode = tmp & 0xf;
+  lockXE = (tmp >> 7)&1;
 
 #ifdef NEED_DISKMUX
   if (size > 9) {
@@ -216,12 +219,10 @@ void write_configuration(void) {
 
   /* Write configuration to EEPROM */
   eeprom_write_word(&storedconfig.structsize, sizeof(storedconfig));
-  eeprom_write_byte(&storedconfig.global_flags,
-                    globalflags & (POSTMATCH | FASTFORMAT |
-                                   EXTENSION_HIDING | D64_WITH_HIDDEN));
+  eeprom_write_byte(&storedconfig.global_flags, globalflags);
   eeprom_write_byte(&storedconfig.address, device_address);
   eeprom_write_byte(&storedconfig.hardaddress, device_hw_address());
-  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode);
+  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode | (lockXE << 7));
 #ifdef NEED_DISKMUX
   eeprom_write_word(&storedconfig.drvconfig0, drive_config);
   eeprom_write_word(&storedconfig.drvconfig1, drive_config >> 16);
