@@ -518,6 +518,7 @@ static const PROGMEM uint8_t system_partition_info[] = {
 #ifndef globalflags
 /* AVR uses GPIOR for this */
 uint8_t globalflags;
+uint8_t globalflagsInt;
 #endif
 
 uint8_t command_buffer[CONFIG_COMMAND_BUFFER_SIZE+2];
@@ -821,7 +822,7 @@ void do_chdir(uint8_t *parsestr) {
 static void parse_chdir(void) {
   do_chdir(command_buffer + 2);
 
-  if (globalflags & AUTOSWAP_ACTIVE)
+  if (globalflagsInt & AUTOSWAP_ACTIVE)
     set_changelist(NULL, NULLSTRING);
 }
 
@@ -1151,7 +1152,7 @@ static void parse_changepart(void) {
   }
 
   current_part = part;
-  if (globalflags & AUTOSWAP_ACTIVE)
+  if (globalflagsInt & AUTOSWAP_ACTIVE)
     set_changelist(NULL, NULLSTRING);
 
   display_current_part(current_part);
@@ -2343,11 +2344,11 @@ static void parse_user(void) {
     }
     switch (command_buffer[2]) {
     case '+':
-      globalflags &= (uint8_t)~VC20MODE;
+      globalflagsInt &= (uint8_t)~VC20MODE;
       break;
 
     case '-':
-      globalflags |= VC20MODE;
+      globalflagsInt |= VC20MODE;
       break;
 
     default:
@@ -2387,6 +2388,7 @@ static void parse_user(void) {
   }
 }
 
+int8_t lockXE = 0;
 
 /* ------------ */
 /*  X commands  */
@@ -2402,18 +2404,31 @@ static void parse_xcommand(void) {
   case 'E':
     /* Change file extension mode */
     str = command_buffer+2;
-    if (*str == '+') {
-      globalflags |= EXTENSION_HIDING;
-    } else if (*str == '-') {
-      globalflags &= (uint8_t)~EXTENSION_HIDING;
-    } else {
-      num = parse_number(&str);
-      if (num > 4) {
-        set_error(ERROR_SYNTAX_UNKNOWN);
+    if (*str == 'L') {
+      lockXE = 1;
+    } else if (*str == 'U') {
+      lockXE = 0;
+    } else if (*str == 'T') {
+      str++;
+      if (*str == '+') {
+        globalflags |= CHECK_TYPE;
+      } else if (*str == '-') {
+        globalflags &= (uint8_t)~CHECK_TYPE;
+      }
+    } else if (!lockXE) { 
+      if (*str == '+') {
+        globalflags |= EXTENSION_HIDING;
+      } else if (*str == '-') {
+        globalflags &= (uint8_t)~EXTENSION_HIDING;
       } else {
-        file_extension_mode = num;
-        if (num >= 3)
-          globalflags |= EXTENSION_HIDING;
+        num = parse_number(&str);
+        if (num > 5) {
+          set_error(ERROR_SYNTAX_UNKNOWN);
+        } else {
+          file_extension_mode = num;
+          if (num >= 3)
+            globalflags |= EXTENSION_HIDING;
+        }
       }
     }
     set_error_ts(ERROR_STATUS,device_address,0);

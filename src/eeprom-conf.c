@@ -78,6 +78,9 @@ static EEMEM struct {
  * If the stored checksum doesn't match the calculated one nothing will
  * be changed.
  */
+ 
+ extern int8_t lockXE;
+ 
 void read_configuration(void) {
   uint_fast16_t i,size;
   uint8_t checksum, tmp;
@@ -115,14 +118,14 @@ void read_configuration(void) {
 
   /* Read data from EEPROM */
   tmp = eeprom_read_byte(&storedconfig.global_flags);
-  globalflags &= (uint8_t)~(POSTMATCH | FASTFORMAT |
-                            EXTENSION_HIDING | D64_WITH_HIDDEN);
-  globalflags |= tmp;
+  globalflags = tmp;
 
   if (eeprom_read_byte(&storedconfig.hardaddress) == device_hw_address())
     device_address = eeprom_read_byte(&storedconfig.address);
 
-  file_extension_mode = eeprom_read_byte(&storedconfig.fileexts);
+  tmp = eeprom_read_byte(&storedconfig.fileexts);
+  file_extension_mode = tmp & 0xf;
+  lockXE = (tmp >> 7)&1;
 
 #ifdef NEED_DISKMUX
   if (size > 9) {
@@ -160,12 +163,10 @@ void write_configuration(void) {
 
   /* Write configuration to EEPROM */
   eeprom_write_word(&storedconfig.structsize, sizeof(storedconfig));
-  eeprom_write_byte(&storedconfig.global_flags,
-                    globalflags & (POSTMATCH | FASTFORMAT |
-                                   EXTENSION_HIDING | D64_WITH_HIDDEN));
+  eeprom_write_byte(&storedconfig.global_flags, globalflags);
   eeprom_write_byte(&storedconfig.address, device_address);
   eeprom_write_byte(&storedconfig.hardaddress, device_hw_address());
-  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode);
+  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode | (lockXE << 7));
 #ifdef NEED_DISKMUX
   eeprom_write_word(&storedconfig.drvconfig0, drive_config);
   eeprom_write_word(&storedconfig.drvconfig1, drive_config >> 16);

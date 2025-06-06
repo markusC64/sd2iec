@@ -226,7 +226,7 @@ int8_t next_match(dh_t *dh, uint8_t *matchstr, date_t *start, date_t *end, uint8
       if (matchstr) {
         if (dent->opstype == OPSTYPE_FAT) {
           /* FAT: Ignore case */
-          if (!match_name(matchstr, dent, 1))
+          if (!match_name(matchstr, dent, file_extension_mode != 5))
             continue;
         } else {
           /* Honor case */

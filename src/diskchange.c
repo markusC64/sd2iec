@@ -105,7 +105,7 @@ static bool mount_line(void) {
 
   curpos = 0;
   buffer_start = readbuf->data;
-  globalflags |= SWAPLIST_ASCII;
+  globalflagsInt |= SWAPLIST_ASCII;
   buffer_start[MAX_LINE_LEN] = 0;
 
   uint8_t effective_line = 0;
@@ -171,7 +171,7 @@ static bool mount_line(void) {
     if (curpos == 0) {
       if (!memcmp_P(buffer_start, petscii_marker, sizeof(petscii_marker))) {
         /* swaplist is in PETSCII, ignore this line */
-        globalflags &= ~SWAPLIST_ASCII;
+        globalflagsInt &= ~SWAPLIST_ASCII;
         is_comment = true;
       }
     }
@@ -202,7 +202,7 @@ static bool mount_line(void) {
   }
 
   /* recode entry if neccessary */
-  if (globalflags & SWAPLIST_ASCII)
+  if (globalflagsInt & SWAPLIST_ASCII)
     asc2pet(buffer_start);
 
   /* parse and change */
@@ -291,7 +291,7 @@ static void set_changelist_internal(path_t *path, uint8_t *filename, uint8_t at_
   FRESULT res;
 
   /* Assume this isn't the auto-swap list */
-  globalflags &= (uint8_t)~AUTOSWAP_ACTIVE;
+  globalflagsInt &= (uint8_t)~AUTOSWAP_ACTIVE;
 
   /* Remove the old swaplist */
   if (swaplist.fs != NULL) {
@@ -349,7 +349,7 @@ void change_disk(void) {
 
         if (create_changelist(&path, swapname)) {
           set_changelist_internal(&path, swapname, 0);
-          globalflags |= AUTOSWAP_ACTIVE;
+          globalflagsInt |= AUTOSWAP_ACTIVE;
         }
       }
 
@@ -360,7 +360,7 @@ void change_disk(void) {
     } else {
       /* Autoswaplist found, mark it as active                */
       /* and exit because the first image is already mounted. */
-      globalflags |= AUTOSWAP_ACTIVE;
+      globalflagsInt |= AUTOSWAP_ACTIVE;
       reset_key(0xff); // <- lazy
       return;
     }
@@ -387,5 +387,5 @@ void change_disk(void) {
 
 void change_init(void) {
   memset(&swaplist,0,sizeof(swaplist));
-  globalflags &= (uint8_t)~AUTOSWAP_ACTIVE;
+  globalflagsInt &= (uint8_t)~AUTOSWAP_ACTIVE;
 }

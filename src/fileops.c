@@ -969,6 +969,15 @@ void file_open(uint8_t secondary) {
     filetype = TYPE_REL;
     mode = OPEN_MODIFY;
   }
+  
+  if ((globalflags & CHECK_TYPE) && filetype != TYPE_DEL && (dent.typeflags & TYPE_MASK) != TYPE_DEL)
+  {
+     if ((dent.typeflags & TYPE_MASK) != filetype)
+     {
+         set_error(ERROR_FILE_TYPE_MISMATCH);
+         return;
+     }
+  }
 
   /* Force mode+type for secondaries 0/1 */
   switch (secondary) {
