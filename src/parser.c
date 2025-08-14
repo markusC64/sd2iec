@@ -186,7 +186,7 @@ uint8_t match_name(uint8_t *matchstr, cbmdirent_t *dent, uint8_t ignorecase) {
       break;
     }
   }
-  if (*matchstr && *matchstr != '*' && chars_remain != 0)
+  if (*matchstr && *matchstr != '\xa0' && *matchstr != '*' && chars_remain != 0)
     return 0;
   else
     return 1;

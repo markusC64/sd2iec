@@ -127,6 +127,12 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
     i = match ? 2 : 0;
     while(*pet) {
         char p = *(pet++);
+        if (p == 160) {
+           const char* q = pet;
+           while (*(q++) == 160);
+           if (!*q) 
+              break;
+        }
         if ((p < 32) || (p >= 96) || (p == ':') || (p == '/') ||
                 (p == '\\') || (p == '*') || (p == '\x22') ||
                 (p == '<') || (p == '>') || (p == '?') || (first && p == '.')) {  // '|' > 96 ;)
@@ -1142,13 +1148,15 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
 
   if (!finfo.lfn[0] || ustrlen(finfo.lfn) > maxLen) {
     nameptr = finfo.fname;
-    if(file_extension_mode == 5)
+    if(file_extension_mode == 5) {
        fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
+    }
   } else {
     /* Convert only LFNs to PETSCII, 8.3 are always upper-case */
     nameptr = finfo.lfn;
-    if(file_extension_mode == 5)
+    if(file_extension_mode == 5) {
        fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
+    }
     else
        asc2pet(nameptr);
   }
@@ -1239,6 +1247,13 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
       ustrcpy(dent->name, finfo.fname);
     } else {
       ustrcpy(dent->name, nameptr);
+      ptr = dent->name;
+      while (*ptr) {
+        if (*ptr == 0xa0)
+          *ptr = 0;
+        ptr++;
+      }
+
     }
 
     ptr = dent->name;
