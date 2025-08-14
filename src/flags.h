@@ -33,6 +33,7 @@ GPIOR0
 #else
 /* Global flags, variable defined in doscmd.c */
 extern uint8_t globalflags;
+extern uint8_t globalflagsInt;
 #endif
 
 /** flag values **/
