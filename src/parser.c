@@ -130,7 +130,10 @@ uint8_t parse_partition(uint8_t **buf) {
  * Returns 1 for a match, 0 otherwise.
  */
 uint8_t match_name(uint8_t *matchstr, cbmdirent_t *dent, uint8_t ignorecase) {
-  uint8_t *filename = dent->name;
+   return match_name_str(matchstr, dent->name, ignorecase);
+}
+
+uint8_t match_name_str(uint8_t *matchstr, uint8_t *filename, uint8_t ignorecase) {
   uint8_t *starpos;
   uint8_t m,f;
   uint8_t chars_remain = 16;
