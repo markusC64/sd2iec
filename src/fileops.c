@@ -284,6 +284,8 @@ static uint8_t pdir_refill(buffer_t* buf) {
     if (buf->pvt.pdir.matchstr &&
         !match_name(buf->pvt.pdir.matchstr, &dent, 0))
       continue;
+    if (buf->pvt.dir.filetype && dent.typeflags != buf->pvt.dir.filetype)  
+      continue;
 
     createentry(&dent, buf, DIR_FMT_CBM);
     return 0;
@@ -481,11 +483,43 @@ static void load_directory(uint8_t secondary) {
         buf->refill = pdir_refill;
 
         if(command_length>3) {
+          name = ustrchr(command_buffer+3, '=');
+          if (name != NULL) {
+              *name++ = 0;
+              switch (*name) {
+              case 'N':
+                buf->pvt.dir.filetype = 8;
+                buf->lastused  = 31;
+                break;
+      
+              case '4':
+                buf->pvt.dir.filetype = 9;
+                buf->lastused  = 31;
+                break;
+      
+              case '7':
+                buf->pvt.dir.filetype = 10;
+                buf->lastused  = 31;
+                break;
+      
+              case '8':
+                buf->pvt.dir.filetype = 11;
+                buf->lastused  = 31;
+                break;
+      
+              case 'C':
+                buf->pvt.dir.filetype = 12;
+                buf->lastused  = 31;
+                break;
+              }
+          }
           /* Parse the name pattern */
           if (parse_path(command_buffer+3, &path, &name, 0))
             return;
 
           buf->pvt.pdir.matchstr = name;
+          if (!match_name_str(buf->pvt.pdir.matchstr, (uint8_t*) "SYSTEM", 0))
+            buf->lastused  = 31;
         }
         stick_buffer(buf);
 
