@@ -31,12 +31,23 @@ ifeq ($(MCU),atmega128)
 #  EFUSE = 0xff
 #  HFUSE = 0x91
 #  LFUSE = 0xaf
+else ifeq ($(MCU),atmega1280)
+  BINARY_LENGTH = 0x1f000
+  BOOTLDRSIZE = 0x0800
+  EFUSE = 0xff
+  HFUSE = 0xd2
+  LFUSE = 0xfc
 else ifeq ($(MCU),atmega1281)
   BINARY_LENGTH = 0x1f000
   BOOTLDRSIZE = 0x0800
   EFUSE = 0xff
   HFUSE = 0xd2
   LFUSE = 0xfc
+else ifeq ($(MCU),atmega2560)
+  BINARY_LENGTH = 0x3f000
+  EFUSE = 0xfd
+  HFUSE = 0xd8
+  LFUSE = 0xff
 else ifeq ($(MCU),atmega2561)
   BINARY_LENGTH = 0x3f000
   EFUSE = 0xfd

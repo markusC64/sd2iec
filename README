@@ -1119,3 +1119,33 @@ An example configuration file named "config-example" is provided with
 the source code, as well as abridged files corresponding to the
 release binaries. If you want to compile sd2iec for a custom hardware
 you may have to edit config.h too to change the port definitions.
+
+MEGA2560 / Arduino considerations
+---------------------------------
+A separate configuration has been added for the mega2560, this enables the Arduino community to easily
+use sd2iec with a regular Arduino or clone together with an sd-card shield.
+To avoid flashing the arduino bootloader (which is not really needed or recommended since the stock one
+works just fine) and make things a little easier a separate flash_arduino.sh script has been added
+in the scripts folder. This script assumes by default to use the avrdude tool in the avr toolchain, but the
+path's can be easily changed to point out the toolchain root in the Arduino SDK.
+The script expects the board to show up on /dev/ttyACM0. It is possible that root access is required.
+
+The default assumption of the MEGA2560 is that no LEDs or extra push-buttons has been added to the board.
+This however can be easily added by simply changing the commented-out suggested GPIO's in the archconfig.h
+for this purpose. That way, drive activity and error LED's can be functional, same goes for a floppy switching
+button for M2I or D64 disks.
+
+For the SD-card shield it should be connected to the Arduino ICSP header (located at the middle of the board).
+The shield also expects GND, probably 3V and also 5V to be connected.
+
+Some boards also expects the chip select pin (SS) to be connected. There is one special case added for that
+in the config2560 already, but there are probably other shield out there that expects a different pin for that.
+
+* The IEC wires can be changed, but the default ones for mega2560 are recommended to use:
+SRQ goes to PD0 (marked 21)
+CLOCK goes to PD1 (marked 20)
+DATA goes to PD2 (marked 19)
+ATN goes to PD3 (marked 18).
+GND goes to any GND (you can find multiple grounds on the board, there's one located next to pin #53).
+The RESET pin can be skipped, sd2iec doesn't need this for full operation.
+

@@ -1125,6 +1125,285 @@ static inline void buttons_init(void) {
 }
 
 
+#elif CONFIG_HARDWARE_VARIANT == 10
+
+// ------------------------------------------------------------------------
+// ---- Hardware configuration: Arduino Mega 2560 or clone ----
+// ------------------------------------------------------------------------
+// NOTE: A lot of features are optional and can be added with additional components
+// or complete shields. Such features are however assumed to be not present and is
+// therefore commented out and replaced with dummy returns that fits a simpler default configuration.
+
+/*** SD card support ***/
+// If your device supports SD cards by default, define this symbol.
+#define HAVE_SD
+
+// Declaration of the interrupt handler for SD card change
+#define SD_CHANGE_HANDLER ISR(INT4_vect)
+
+// Initialize all pins and interrupts related to SD - except SPI
+static inline void sdcard_interface_init(void) {
+#if 0
+  // card detect (SD1)
+  DDRE  &= ~_BV(PE4);
+  PORTE |=  _BV(PE4);
+  // write protect (SD1) (NOT WIRED YET, PE2 unused on the Arduino)
+  DDRE &= ~_BV(PE2);
+  PORTE |= _BV(PE2);
+
+  // card change interrupt (SD1)
+  EICRB |= _BV(ISC40);   // Any logical change on INTn
+  EICRB &= ~_BV(ISC41);  // generates an interrupt request
+  EIMSK |= _BV(INT4);
+
+  // chip select (SD1)
+  PORTE |= _BV(PE3);
+  DDRE |= _BV(PE3);
+#endif
+
+/* Itead SD shield v3 uses D4 (PG5) for SS pin */
+#ifdef CONFIG_MEGA_SHIELD_ITEAD_V3
+  /* Chip select (SD1) */
+  PORTG |= _BV(PG5);
+  DDRG |= _BV(PG5);
+#endif
+  // Note: Wrapping SD2 in CONFIG_TWINSD may be a good idea
+#if 0
+  /* Declaration of the interrupt handler for SD card 2 change */
+  #  define SD2_CHANGE_HANDLER ISR(INT9_vect)
+  /* chip select (SD2) */
+  PORTD |= _BV(PD4);
+  DDRD |= _BV(PD4);
+  /* card detect (SD2) */
+  DDRD &= ~_BV(PD3);
+  PORTD |= _BV(PD3);
+  /* write protect (SD2) */
+  DDRD &= ~_BV(PD7);
+  PORTD |= _BV(PD7);
+  /* card change interrupt (SD2) */
+  EICRA |=  _BV(ISC90); // Change interrupt
+  EIMSK |=  _BV(INT9);  // Change interrupt
+#endif
+}
+
+// sdcard_detect() must return non-zero while a card is inserted
+// This must be a pin capable of generating interrupts.
+static inline uint8_t sdcard_detect(void) {
+  // OPTIONAL: Add detect pin for sd card if the shield has such.
+  // Simply return true otherwise, fake always available.
+  return 1;
+//  return !(PINE & _BV(PE4));
+}
+
+// SD card 1 is assumed to use the standard SS pin
+// If that's not true, #define SDCARD_SS_SPECIAL and
+// implement this function:
+#if 0
+#define SDCARD_SS_SPECIAL
+static inline __attribute__((always_inline)) void sdcard_set_ss(uint8_t state) {
+  if(state)
+    PORTE |= _BV(PE3);
+  else
+    PORTE &= ~_BV(PE3);
+}
+#endif
+
+/* Itead SD shield v3 uses D4 (PG5) for SS pin */
+#ifdef CONFIG_MEGA_SHIELD_ITEAD_V3
+#define SDCARD_SS_SPECIAL
+static inline __attribute__((always_inline)) void sdcard_set_ss(uint8_t state) {
+  if (state)
+    PORTG |= _BV(PG5);
+  else
+    PORTG &= ~_BV(PG5);
+}
+#endif
+
+// Returns non-zero when the currently inserted card is write-protected
+static inline uint8_t sdcard_wp(void) {
+  // OPTIONAL: Add write protect pin for sd card, if the shield has such.
+  // Otherwise simply return false (fake always write enabled).
+  return 0;
+}
+
+// Support for a second SD card - use CONFIG_TWINSD=y in your config file to enable!
+// Same as the two functions above, but for card 2
+static inline uint8_t sdcard2_detect(void) {
+  return 0;
+}
+static inline uint8_t sdcard2_wp(void) {
+  return 0;
+}
+
+// SD card 2 CS pin
+static inline __attribute__((always_inline)) void sdcard2_set_ss(uint8_t state) {
+  (void)state; // suppress "unused parameter" error
+}
+
+/* SD Card supply voltage - choose the one appropiate to your board */
+// #  define SD_SUPPLY_VOLTAGE (1L<<15)  // 2.7V - 2.8V
+// #  define SD_SUPPLY_VOLTAGE (1L<<16)  // 2.8V - 2.9V
+// #  define SD_SUPPLY_VOLTAGE (1L<<17)  // 2.9V - 3.0V
+// #  define SD_SUPPLY_VOLTAGE (1L<<18)  // 3.0V - 3.1V
+// #  define SD_SUPPLY_VOLTAGE (1L<<19)  // 3.1V - 3.2V
+// #  define SD_SUPPLY_VOLTAGE (1L<<20)  // 3.2V - 3.3V
+#  define SD_SUPPLY_VOLTAGE (1L << 21)  // 3.3V - 3.4V
+// #  define SD_SUPPLY_VOLTAGE (1L<<22)  // 3.4V - 3.5V
+// #  define SD_SUPPLY_VOLTAGE (1L<<23)  // 3.5V - 3.6V
+
+// SPI clock divisors - the slow one must be 400KHz or slower,
+// the fast one can be as high as you thing your hardware will handle
+#  define SPI_DIVISOR_SLOW 32
+#  define SPI_DIVISOR_FAST 4
+
+
+/*** Device address selection ***/
+// device_hw_address() returns the hardware-selected device address
+static inline uint8_t device_hw_address(void) {
+  // OPTIONAL: Attach and implement a 2-button DIP-switch.
+  // If not we return always a hard coded number.
+  return 8;
+  // return 8 + !(PIND & _BV(PD7)) + 2 * !(PIND & _BV(PD5));
+}
+
+/* Configure hardware device address pins */
+static inline void device_hw_address_init(void) {
+  // DDRD  &= ~(_BV(PD7) | _BV(PD5));
+  // PORTD |=   _BV(PD7) | _BV(PD5);
+}
+
+
+/*** LEDs ***/
+// Please don't build single-LED hardware anymore...
+
+// Initialize ports for all LEDs
+static inline void leds_init(void) {
+  // Note: Depending on the chip and register these lines can compile
+  //       to one instruction each on AVR. For two bits this is one
+  //       instruction shorter than "DDRB |= _BV(PB6) | _BV(PB7);"
+  DDRB |= _BV(PB7);
+  // OPTIONAL: Implement a second led (RED one!).
+  DDRH |= _BV(PH3);
+}
+
+// --- "BUSY" led, recommended color: green (usage similiar to 1541 LED) ---
+static inline __attribute__((always_inline)) void set_busy_led(uint8_t state) {
+  // OPTIONAL: Attach and implement a green led for BUSY.
+//  VAR_UNUSED(state);
+  if (state)
+    PORTH &= ~_BV(PH3);
+  else
+    PORTH |= _BV(PH3);
+}
+
+// --- "DIRTY" led, recommended color: red (errors, unwritten data in memory) ---
+static inline __attribute__((always_inline)) void set_dirty_led(uint8_t state) {
+  if(state)
+    PORTB &= ~_BV(PB7);
+  else
+    PORTB |= _BV(PB7);
+}
+
+// Toggle function used for error blinking
+static inline void toggle_dirty_led(void) {
+  // Sufficiently new AVR cores have a toggle function
+  PINB |= _BV(PB7);
+}
+
+
+/*** IEC signals ***/
+#define IEC_INPUT PIND
+#define IEC_DDR   DDRD
+#define IEC_PORT  PORTD
+
+// Pins assigned for the IEC lines
+#define IEC_PIN_ATN   PD3
+#define IEC_PIN_DATA  PD2
+#define IEC_PIN_CLOCK PD1
+#define IEC_PIN_SRQ   PD0
+
+// Use separate input/output lines?
+// The code assumes that the input is NOT inverted, but the output is.
+//#define IEC_SEPARATE_OUT
+//#define IEC_OPIN_ATN   PA4
+//#define IEC_OPIN_DATA  PA5
+//#define IEC_OPIN_CLOCK PA6
+//#define IEC_OPIN_SRQ   PA7
+
+/* You can use different ports for input and output bits. The code tries */
+/* to not stomp on the unused bits. IEC output is on IEC_PORT.           */
+/* Not well-tested yet.                                                  */
+//#  define IEC_DDRIN      DDRX
+//#  define IEC_DDROUT     DDRY
+//#  define IEC_PORTIN     PORTX
+
+/* ATN interrupt (required) */
+#define IEC_ATN_INT         INT3
+#define IEC_ATN_INT_VECT    INT3_vect
+static inline void iec_interrupts_init(void) {
+  EIMSK |= _BV(INT3);
+}
+
+// CLK interrupt (not required)
+// Dreamload requires interrupts for both the ATN and CLK lines. If both are served by
+// the same PCINT vector, define that as ATN interrupt above and define IEC_PCMSK.
+//#define IEC_PCMSK             PCMSK0
+// If the CLK line has its own dedicated interrupt, use the following definitions:
+#define IEC_CLK_INT           INT1
+#define IEC_CLK_INT_VECT      INT1_vect
+static inline void iec_clock_int_setup(void) {
+  EICRA |= _BV(ISC10);
+}
+
+
+/*** IEEE signals ***/
+// not documented yet, look at petSD/XS-1541 for guidance
+
+/*** User interface ***/
+// Button NEXT changes to the next disk image and enables sleep mode (held)
+// OPTIONAL: Add a push button for next disk image
+#define BUTTON_NEXT _BV(PG0)
+
+// Button PREV changes to the previous disk image
+// OPTIONAL: Add a push button for previous disk image.
+#define BUTTON_PREV _BV(PG2)
+
+// Read the raw button state - a depressed button should read as 0
+static inline rawbutton_t buttons_read(void) {
+  // OPTIONAL: Attach/Implement buttons on some GPIO.
+  return 0;
+//	return PING & (BUTTON_NEXT | BUTTON_PREV);
+}
+
+static inline void buttons_init(void) {
+  // OPTIONAL: Attach/Implement buttons on some GPIO.
+//  DDRG  &= (uint8_t)~(BUTTON_NEXT | BUTTON_PREV);
+//  PORTG |= BUTTON_NEXT | BUTTON_PREV;
+}
+
+// Software I2C lines for the RTC and display
+#define SOFTI2C_PORT    PORTC
+#define SOFTI2C_PIN     PINC
+#define SOFTI2C_DDR     DDRC
+#define SOFTI2C_BIT_SCL PC4
+#define SOFTI2C_BIT_SDA PC5
+#define SOFTI2C_DELAY   6
+
+
+/*** board-specific initialisation ***/
+/* Currently used on uIEC/CF and uIEC/SD only */
+#define HAVE_BOARD_INIT
+static inline void board_init(void) {
+  // Arduino MEGA important: Clock down to 8MHZ for ease of adaptation to strict cycle timings.
+  CLKPR = _BV(CLKPCE);
+  CLKPR = _BV(CLKPS0);
+
+  // OPTIONAL: Attach/Implement a power led.
+  // turn on power LED
+//  DDRG  |= _BV(PG1);
+//  PORTG |= _BV(PG1);
+}
+
 #else
 #  error "CONFIG_HARDWARE_VARIANT is unset or set to an unknown value."
 #endif
