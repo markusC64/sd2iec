@@ -2170,7 +2170,7 @@ static void parse_timewrite(void) {
 
   /* day of week calculation by M. Keith and T. Craver via */
   /* https://en.wikipedia.org/wiki/Determination_of_the_day_of_the_week */
-  uint8_t day_of_week(uint16_t y, uint8_t m, uint8_t d) {
+  uint8_t day_of_week(uint16_t y, uint16_t m, uint16_t d) {
     y += 1900;
     return (d+=m<3?y--:y-2,23*m/9+d+4+y/4-y/100+y/400)%7;
   }
