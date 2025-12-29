@@ -930,6 +930,10 @@ static inline void early_board_init(void) {
 
 #elif CONFIG_HARDWARE_VARIANT == HW_PETSDPLUS
 /* ---------- Hardware configuration: petSD+ --------- */
+#if defined(CONFIG_HAVE_IEC) && !defined(HAVE_DUAL_INTERFACE)
+#  define CLOCK_PRESCALE  clock_div_2
+#endif
+
 #  define HAVE_SD
 #  define IEC_SLOW_IEEE_FAST
 #ifndef CONFIG_IGNORE_CARD_DETECT
