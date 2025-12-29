@@ -1106,19 +1106,19 @@ static inline uint8_t device_hw_address(void) {
 #  define LCD_ADDR_LINE4        84
 
 
-#  ifdef CONFIG_ONBOARD_DISPLAY
+#ifdef CONFIG_HAVE_IEC
 #    define HAVE_EARLY_BOARD_INIT
+static inline void early_board_init(void) {
+  IEEE_DDR_TE |= _BV(IEEE_PIN_TE);      // TE as output
+  IEEE_PORT_TE &= ~_BV(IEEE_PIN_TE);    // TE low (listen mode)
+}
+#endif
+
+#  ifdef CONFIG_ONBOARD_DISPLAY
 #    define HAVE_LATE_BOARD_INIT
 #include "lcd.h"
 #include "diagnose.h"
 #include "timer.h"
-
-static inline void early_board_init(void) {
-#ifdef CONFIG_HAVE_IEC
-  IEEE_DDR_TE |= _BV(IEEE_PIN_TE);      // TE as output
-  IEEE_PORT_TE &= ~_BV(IEEE_PIN_TE);    // TE low (listen mode)
-#endif
-}
 
 static inline void late_board_init(void) {
   lcd_init();
