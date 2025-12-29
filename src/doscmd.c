@@ -2017,7 +2017,7 @@ static void parse_xcommand(void) {
     }
     break;
 
-#ifdef CONFIG_HW_ADDR_OR_BUTTONS
+#if defined(CONFIG_HW_ADDR_OR_BUTTONS) && defined(CONFIG_ONBOARD_DISPLAY)
   case 'M':
     /* Enable or disable LCD menu system, used to switch
        between buttons for menu usage and DIP switches

@@ -56,7 +56,7 @@ uint8_t rom_filename[ROM_NAME_LENGTH+1];
  * @imagedirs  : Disk images-as-directory mode
  * @romname    : M-R rom emulation file name (zero-padded, but not terminated)
  * @active_bus : IEC or IEEE488
- * @menu_system_enabled : control LCD menu with buttons / buttons set device addr
+ * @menu_enabled : control LCD menu with buttons / buttons set device addr
  *
  * This is the data structure for the contents of the EEPROM.
  *
@@ -77,7 +77,7 @@ static EEMEM struct {
   uint8_t  imagedirs;
   uint8_t  romname[ROM_NAME_LENGTH];
   uint8_t  active_bus;
-  uint8_t  menu_system_enabled;
+  uint8_t  menu_enabled;
   uint8_t  lcd_contrast;
   uint8_t  lcd_brightness;
 } __attribute__((packed)) storedconfig;
@@ -138,10 +138,10 @@ void read_configuration(void) {
 
   /* Read data from EEPROM */
 
-#ifdef CONFIG_HW_ADDR_OR_BUTTONS
+#if defined(CONFIG_HW_ADDR_OR_BUTTONS) && defined(CONFIG_ONBOARD_DISPLAY)
   if (size > 31)
     /* Read this first because it affects device_hw_address() */
-    menu_system_enabled = eeprom_read_byte(&storedconfig.menu_system_enabled);
+    menu_system_enabled = eeprom_read_byte(&storedconfig.menu_enabled);
 #endif
 
   tmp = eeprom_read_byte(&storedconfig.global_flags);
@@ -233,7 +233,7 @@ void write_configuration(void) {
   eeprom_write_block(rom_filename, &storedconfig.romname, ROM_NAME_LENGTH);
   eeprom_write_byte(&storedconfig.active_bus, active_bus);
 #ifdef CONFIG_HW_ADDR_OR_BUTTONS
-  eeprom_write_byte(&storedconfig.menu_system_enabled, menu_system_enabled);
+  eeprom_write_byte(&storedconfig.menu_enabled, menu_system_enabled);
 #endif
 #ifdef CONFIG_ONBOARD_DISPLAY
   eeprom_write_byte(&storedconfig.lcd_contrast, lcd_contrast);

@@ -1133,6 +1133,8 @@ static inline void late_board_init(void) {
   }
 }
 
+#endif
+
 #include "i2c.h"
 
 static inline void ieee_interface_init(void) {
@@ -1169,7 +1171,6 @@ static inline void iec_interrupts_init(void) {
 #endif
 
 
-#  endif
 #elif CONFIG_HARDWARE_VARIANT == HW_CBMSDMINI
 /* ---------- Hardware configuration: cbmSD-mini --------- */
 #  define HAVE_SD
