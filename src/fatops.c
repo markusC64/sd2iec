@@ -163,6 +163,13 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
         escape = false;
     }
     fat[i] = 0;
+    
+    if (strlen(fat) > 3)
+    {
+       char* ext = fat + strlen(fat) - 4; 
+       if (!strcasecmp(ext, ".prg") ||!strcasecmp(ext, ".seq") || !strcasecmp(ext, ".usr") || !strcasecmp(ext, ".rel"))
+          strcat(fat, "{}");
+    }
 }
 
 void fat_to_petscii(const char *fat, bool cutExt, char *pet, int len, bool term)
@@ -522,6 +529,7 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
   if (file_extension_mode == 5)
   {
      petscii_to_fat((const char*)name, fatfs_yAbuffer, 40);
+     
      memcpy(name, fatfs_yAbuffer, 45);
      if (type == 0) return NULL; 
      while (*name) name++;
