@@ -1579,10 +1579,13 @@ static void handle_memwrite(void) {
 
     index = pgm_read_word(&crcptr->rxtx);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
     if (index != RXTX_NONE) {
       fast_get_byte  = (fastloader_rx_t)pgm_read_word(&(fl_rxtx_table[index].rxfunc));
       fast_send_byte = (fastloader_tx_t)pgm_read_word(&(fl_rxtx_table[index].txfunc));
     }
+#pragma GCC diagnostic pop
 #endif
   }
 
