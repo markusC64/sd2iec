@@ -137,7 +137,7 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
                 (p == '\\') || (p == '*') || (p == '\x22') ||
                 (p == '<') || (p == '>') || (p == '?') || (first && p == '.')) {  // '|' > 96 ;)
 
-            if ((i + 4) >= maxlen) {
+            if ((i + 4) > maxlen) {
                 break;
             }
             if (!escape) {
@@ -147,7 +147,7 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
             fat[i++] = hex[((uint8_t)p) >> 4];
             fat[i++] = hex[p & 15];
         } else {
-            if ((i + 2) >= maxlen) {
+            if ((i + 2) > maxlen) {
                 break;
             }
             if (escape) {
