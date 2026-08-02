@@ -1993,7 +1993,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     ext = ops_scratch + ustrlen(ops_scratch);
     if (ext > ops_scratch + sizeof(ops_scratch) - 5)
       ext = ops_scratch + sizeof(ops_scratch) - 5;
-    ustrcpy(ext, ".d64");
+    ustrcpy(ext, ".D64");
     imagetype = IMG_IS_D41;
     ext = NULL;
   }
@@ -2010,7 +2010,13 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
   /* ops_scratch contains the filename for the image */
-  pet2asc(ops_scratch);
+  if (file_extension_mode == 5)
+  {
+     petscii_to_fat((const char*)ops_scratch, fatfs_yAbuffer, 40);
+     memcpy(ops_scratch, fatfs_yAbuffer, 45); 
+  }
+  else
+     pet2asc(ops_scratch);
 
   res = f_open(&partition[path->part].fatfs,
                &partition[path->part].imagehandle,
@@ -2063,6 +2069,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
 
     if (res == FR_OK) {
       res = f_lseek(&partition[path->part].imagehandle, fsize);
+      partition[path->part].imagehandle.fsize = fsize;
     }
   } else if (res == FR_OK) { // image file exists
     /* Don't overwrite the image if the extension was auto-appended */
