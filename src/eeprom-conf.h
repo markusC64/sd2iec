@@ -26,9 +26,13 @@
 #ifndef EEPROM_CONF_H
 #define EEPROM_CONF_H
 
+#include <stdbool.h>
+
 #define ROM_NAME_LENGTH 16
 
 extern uint8_t rom_filename[ROM_NAME_LENGTH+1];
+
+extern bool eeprom_config_ignored;
 
 void read_configuration(void);
 void write_configuration(void);

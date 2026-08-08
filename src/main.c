@@ -117,9 +117,26 @@ int main(void) {
   set_busy_led(0);
 
 #if defined(HAVE_SD)
-  /* card switch diagnostic aid - hold down PREV button to use */
-  if (menu_system_enabled && get_key_press(KEY_PREV))
+  /* Boot-time button aids, evaluated here where the key debouncer has long
+     since settled (disk_init/filesystem_init ran in between):
+       PREV + NEXT held -> failsafe: ignore the stored EEPROM config for this
+                           session and fall back to sane defaults, so a board
+                           whose EEPROM holds an unsuitable bus/address/menu
+                           flag stays reachable. Save via the menu to keep it.
+       PREV alone       -> card switch diagnostic aid. */
+  if (get_key_state(KEY_PREV | KEY_NEXT) == (KEY_PREV | KEY_NEXT)) {
+    eeprom_config_ignored = true;
+    device_address      = CONFIG_DEFAULT_ADDR;
+#ifdef CONFIG_ONBOARD_DISPLAY
+    menu_system_enabled = true;
+#endif
+#ifdef HAVE_DUAL_INTERFACE
+    active_bus          = IEEE488;
+#endif
+    get_key_press(KEY_ANY);  // consume so the aids below don't also fire
+  } else if (menu_system_enabled && get_key_press(KEY_PREV)) {
     board_diagnose();
+  }
 #endif
 
   if (menu_system_enabled)

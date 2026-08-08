@@ -1121,6 +1121,11 @@ static inline void late_board_init(void) {
   lcd_init();
   lcd_bootscreen();
   buttons_init();
+  /* Skip the raw-ADC button aids when the failsafe chord was detected
+     (and may still be held): its voltage sits close to the contrast
+     window and could otherwise be misread as a menu key. */
+  if (eeprom_config_ignored)
+    return;
   uint16_t buttons = ADCW;
   if (buttons > 580 && buttons < 630) {
     board_diagnose();
@@ -1364,6 +1369,11 @@ static inline void late_board_init(void) {
   lcd_init();
   lcd_bootscreen();
   buttons_init();
+  /* Skip the raw-ADC button aids when the failsafe chord was detected
+     (and may still be held): its voltage sits close to the contrast
+     window and could otherwise be misread as a menu key. */
+  if (eeprom_config_ignored)
+    return;
   uint16_t buttons = ADCW;
   if (buttons > 580 && buttons < 630) {
     board_diagnose();

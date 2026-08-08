@@ -95,17 +95,35 @@ static EEMEM struct {
  */
  
  extern int8_t lockXE;
- 
+
+bool eeprom_config_ignored = false;
+
 void read_configuration(void) {
   uint_fast16_t i,size;
   uint8_t checksum, tmp;
   bool rewrite_required = false;
+#ifdef HAVE_DUAL_INTERFACE
+  /* active_bus reflects the last user selection once the system is up; only
+     the first (power-on) call may load it from EEPROM. Otherwise the periodic
+     re-reads in the main loop and on every IFC (PET reset) would revert an
+     unsaved bus switch made from the menu. */
+  static bool active_bus_from_eeprom = true;
+  bool load_active_bus = active_bus_from_eeprom;
+  active_bus_from_eeprom = false;
+#endif
 
   /* Set default values */
   globalflags         |= POSTMATCH;            /* Post-* matching enabled */
   file_extension_mode  = 0;                    /* Never write x00 format files */
   set_drive_config(get_default_driveconfig()); /* Set the default drive configuration */
   memset(rom_filename, 0, sizeof(rom_filename));
+
+  /* Failsafe: PREV+NEXT held at power-on (see main.c) - keep the
+     compile-time defaults set above, don't touch the EEPROM */
+  if (eeprom_config_ignored) {
+    uart_puts_P(PSTR("EEPROM config ignored, using defaults\r\n"));
+    return;
+  }
 
 #if 0
   FIXME!
@@ -157,6 +175,12 @@ void read_configuration(void) {
   } else {
     device_address = stored_sw_addr;
   }
+  /* Reject an implausible stored address (valid CBM range is 4..30) - e.g.
+     from a stale EEPROM with a different struct layout. */
+  if (device_address < 4 || device_address > 30) {
+    device_address = current_hw_addr;
+    rewrite_required = true;
+  }
   printf("current hw addr: %d\r\n", current_hw_addr);
   printf("stored  hw addr: %d, stored sw addr: %d\r\n", stored_hw_addr,
       stored_sw_addr);
@@ -187,8 +211,17 @@ void read_configuration(void) {
     eeprom_read_block(rom_filename, &storedconfig.romname, ROM_NAME_LENGTH);
 
 #ifdef HAVE_DUAL_INTERFACE
-  if (size > 30)
+  if (load_active_bus && size > 30)
     active_bus = eeprom_read_byte(&storedconfig.active_bus);
+  /* Reject an implausible bus value (only IEC=0 / IEEE488=1 are valid). A
+     garbage value - e.g. from a stale EEPROM written by a firmware with a
+     different struct layout - would otherwise hit bus.h's "else" branch and
+     select the 16 MHz prescaler while F_CPU is 8 MHz, mistiming I2C, the
+     buttons and the bus so the device looks dead right after booting. */
+  if (active_bus != IEC && active_bus != IEEE488) {
+    active_bus = IEEE488;
+    rewrite_required = true;
+  }
 #endif
 
 #ifdef CONFIG_ONBOARD_DISPLAY
