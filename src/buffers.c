@@ -32,7 +32,7 @@
 #include "buffers.h"
 
 dh_t    matchdh;
-uint8_t ops_scratch[45];
+uint8_t ops_scratch[_LFN_SCAN_LEN + 1];  /* also the FatFs LFN sink at the default (scan) limit */
 
 /// One additional buffer structure for channel 15
 buffer_t buffers[CONFIG_BUFFER_COUNT+1];

@@ -188,6 +188,25 @@ typedef struct {
   } pvt;
 } cbmdirent_t;
 
+/* One entry of the windowed directory browser (menu). Shared with the
+   fetch helpers in fatops.c. Categories order the FAT sort. In an image
+   context realname[0]==0 and 'name' is the exact CBM name. */
+#define BROWSE_CAT_DIR   0
+#define BROWSE_CAT_IMAGE 1
+#define BROWSE_CAT_FILE  2
+#define BROWSE_NAME_MAX  32          /* stored per window entry: sort key + static
+                                        row (display is only LCD_COLS-4 wide). The
+                                        full long name (up to _MAX_LFN_LENGTH, ff.h)
+                                        is re-read on demand only for scrolling. */
+typedef struct {
+  uint8_t  cat;                      /* BROWSE_CAT_* (primary sort key) */
+  uint16_t blocks;                   /* size in blocks (file display) */
+  uint32_t cluster;                  /* FAT: start cluster (dir chdir); image: 0 */
+  uint16_t offset;                   /* image: native ordinal (anchor); FAT: 0 */
+  uint8_t  realname[8+3+1+1];        /* FAT 8.3 (load + tiebreak); image: [0]=0 */
+  uint8_t  name[BROWSE_NAME_MAX+1];  /* display + sort key + scroll source */
+} browse_entry_t;
+
 /**
  * struct d64fh - D64 file handle
  * @dh    : d64dh pointing to the directory entry

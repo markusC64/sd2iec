@@ -44,12 +44,23 @@ uint8_t  fat_getid(path_t *path, uint8_t *id);
 uint16_t fat_freeblocks(uint8_t part);
 uint8_t  fat_opendir(dh_t *dh, path_t *dir);
 int8_t   fat_readdir(dh_t *dh, cbmdirent_t *dent);
+bool     fat_get_longname(path_t *path, const uint8_t *shortname, uint8_t *buf);
+/* windowed browser: FAT keyset fetch (see fatops.c) */
+uint8_t  browse_fat_fill(path_t *path, const browse_entry_t *anchor,
+                         browse_entry_t out[], uint8_t cap, bool *hit_end);
+bool     browse_fat_prev(path_t *path, const browse_entry_t *anchor, browse_entry_t *out);
+uint8_t  browse_fat_last(path_t *path, browse_entry_t out[], uint8_t cap, bool *at_start);
+bool     browse_fat_find_cluster(path_t *path, uint32_t cluster, browse_entry_t *out);
 void     fat_read_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector);
 void     fat_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector);
 void     fat_format_image(path_t *path, uint8_t *name, uint8_t *id);
 
 extern const fileops_t fatops;
 extern uint8_t file_extension_mode;
+
+/* Decode a FAT name (resolving XE5 {XX} escapes) to a CBM/PETSCII name.
+   Used by the LCD browser to display XE5-encoded names readably. */
+void fat_to_petscii(const char *fat, bool cutExt, char *pet, int len, bool term);
 
 /* Generic helpers */
 uint8_t image_unmount(uint8_t part);

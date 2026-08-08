@@ -1105,6 +1105,258 @@ uint8_t fat_opendir(dh_t *dh, path_t *path) {
 }
 
 /**
+ * fat_get_longname - fetch a FAT file's FULL long name by its 8.3 short name
+ * @path      : directory to search
+ * @shortname : the 8.3 short name (dent->pvt.fat.realname) to look up
+ * @buf       : caller buffer, >= _MAX_LFN_LENGTH+1 bytes (transient, e.g. on the stack)
+ *
+ * Raises lfn_limit to _MAX_LFN_LENGTH for the duration of the scan so the full
+ * (untruncated) long name is read into @buf - used only for on-demand scrolling
+ * of the highlighted entry, so nothing permanent scales with the full length.
+ * Restores lfn_limit before returning. Returns true if a long name was found
+ * (0-terminated in @buf), false otherwise (@buf left empty).
+ */
+bool fat_get_longname(path_t *path, const uint8_t *shortname, uint8_t *buf) {
+  DIR     dir;
+  FILINFO finfo;
+  bool    found = false;
+
+  buf[0] = 0;
+  finfo.lfn = buf;
+  lfn_limit = _MAX_LFN_LENGTH;                 /* read the FULL name (buf is sized for it) */
+  if (l_opendir(&partition[path->part].fatfs, path->dir.fat, &dir) == FR_OK) {
+    while (f_readdir(&dir, &finfo) == FR_OK && finfo.fname[0]) {
+      if (!strcmp((const char *)finfo.fname, (const char *)shortname)) {
+        found = (buf[0] != 0);
+        break;
+      }
+    }
+  }
+  lfn_limit = _LFN_SCAN_LEN;                    /* restore the small scan limit for every other reader */
+  return found;
+}
+
+/* ---- windowed browser: FAT keyset fetch (sorted, O(window) RAM) ----
+   Total order for the browser: category (DIR<IMAGE<FILE), then the full
+   PETSCII long name (case-insensitive), then the unique 8.3 name as tiebreaker. */
+
+/* Fold PETSCII uppercase (0xC1-0xDA, from ASCII A-Z via asc2pet) down to the
+   lowercase range (0x41-0x5A) so the browser sorts case-insensitively: an
+   uppercase 8.3 short name and a mixed-case long name of the same word sort
+   together alphabetically instead of being split apart by their case. */
+static uint8_t browse_fold(uint8_t c) {
+  return (c >= 0xc1 && c <= 0xda) ? (uint8_t)(c - 0x80) : c;
+}
+
+static int browse_name_cmp(const uint8_t *a, const uint8_t *b) {
+  for (;;) {
+    uint8_t ca = browse_fold(*a), cb = browse_fold(*b);
+    if (ca != cb) return (int)ca - (int)cb;
+    if (!ca) return 0;                       /* both strings ended together */
+    a++; b++;
+  }
+}
+
+static int browse_key_cmp(const browse_entry_t *a, const browse_entry_t *b) {
+  if (a->cat != b->cat) return (int)a->cat - (int)b->cat;
+  int c = browse_name_cmp(a->name, b->name);       /* case-insensitive */
+  if (c) return c;
+  return strcmp((const char *)a->realname, (const char *)b->realname);
+}
+
+/* Fill namebuf (>= CBM_NAME_LENGTH+1 bytes, PRE-ZEROED by the caller) with the
+   internal CBM name of a [PSRU]00 file. Returns true on a valid C64File header,
+   false on any open/read/marker failure. Uses ops_scratch as the header read sink,
+   so the caller must NOT rely on ops_scratch (e.g. an LFN) surviving this call.
+   Shared with fat_readdir so the browser and the C64 listing agree. */
+static bool fat_lookup_p00_name(uint8_t part, uint32_t cluster, uint8_t *namebuf) {
+  uint8_t *cached = p00cache_lookup(part, cluster);
+  if (cached != NULL) {
+    memcpy(namebuf, cached, CBM_NAME_LENGTH);
+    return true;
+  }
+  UINT bytesread;
+  if (l_opencluster(&partition[part].fatfs, &partition[part].imagehandle, cluster) != FR_OK)
+    return false;
+  if (f_read(&partition[part].imagehandle, ops_scratch, P00_HEADER_SIZE, &bytesread) != FR_OK)
+    return false;
+  if (memcmp_P(ops_scratch, p00marker, P00MARKER_LENGTH))
+    return false;
+  ustrcpy(namebuf, ops_scratch + P00_CBMNAME_OFFSET);
+  for (uint8_t i = 0; i < 16; i++)               /* some programs pad with 0xa0, not 0 */
+    if (namebuf[i] == 0xa0) namebuf[i] = 0;
+  p00cache_add(part, cluster, namebuf);
+  return true;
+}
+
+/* Build a browse entry from a FatFs FILINFO (info.lfn must be filled). Mirrors
+   fat_readdir's name presentation so the browser matches the C64 directory:
+   [PSRU]00 internal names, XE5 decode, extension hiding, 0xa0 shift-space. */
+static void browse_fat_build(uint8_t part, const FILINFO *info, browse_entry_t *e) {
+  ustrcpy(e->realname, info->fname);
+  e->cluster = info->clust;
+  e->offset  = 0;
+  uint32_t fsize = info->fsize;
+
+  /* Classify from fname - a field that survives the P00 read below, which
+     overwrites ops_scratch (== info->lfn while browsing). */
+  uint8_t *ext;
+  exttype_t et = (info->fattrib & AM_DIR) ? EXT_UNKNOWN
+                                          : check_extension((uint8_t *)info->fname, &ext);
+  uint8_t p00name[CBM_NAME_LENGTH + 1];
+  bool x00 = false;
+  if (et == EXT_IS_X00) {
+    memset(p00name, 0, sizeof(p00name));
+    x00 = fat_lookup_p00_name(part, info->clust, p00name);   /* NB: clobbers info->lfn */
+  }
+
+  if (x00) {                                    /* [PSRU]00: show the internal CBM name */
+    ustrncpy(e->name, p00name, BROWSE_NAME_MAX);
+    e->name[BROWSE_NAME_MAX] = 0;
+    fsize -= P00_HEADER_SIZE;
+  } else if (et == EXT_IS_X00) {                /* malformed .P00: lfn is gone -> use 8.3 */
+    ustrncpy(e->name, info->fname, BROWSE_NAME_MAX);
+    e->name[BROWSE_NAME_MAX] = 0;
+    asc2pet(e->name);
+  } else {                                      /* normal name (lfn still intact) */
+    uint8_t *src = info->lfn[0] ? (uint8_t *)info->lfn : (uint8_t *)info->fname;
+    /* XE5 (mode 5): decode canonically like the C64/1541U (FAT case not authoritative);
+       other modes: show the LFN as stored (case-preserving). */
+    if (file_extension_mode == 5) {
+      fat_to_petscii((char *)src, false, (char *)e->name, BROWSE_NAME_MAX, true);
+    } else {
+      ustrncpy(e->name, src, BROWSE_NAME_MAX);
+      e->name[BROWSE_NAME_MAX] = 0;
+      asc2pet(e->name);
+    }
+  }
+  /* A CBM shift-space (0xa0) ends the visible name; the rest is directory padding. */
+  { uint8_t *sp = e->name; while (*sp && *sp != 0xa0) sp++; *sp = 0; }
+
+  if (info->fattrib & AM_DIR)                       e->cat = BROWSE_CAT_DIR;
+  else if (check_imageext((uint8_t *)info->fname) != IMG_UNKNOWN) e->cat = BROWSE_CAT_IMAGE;
+  else                                             e->cat = BROWSE_CAT_FILE;
+  /* Extension hiding (modes 3-5 / XE+): drop the .prg/.seq/.usr/.rel suffix like
+     fat_readdir. (X00 entries are EXT_IS_X00, not EXT_IS_TYPE, so unaffected.) */
+  if (e->cat == BROWSE_CAT_FILE && et == EXT_IS_TYPE && (globalflags & EXTENSION_HIDING)) {
+    uint8_t l = ustrlen(e->name);
+    if (l >= 4) e->name[l - 4] = 0;
+  }
+  e->blocks = (fsize > 16255746UL) ? 63999 : (fsize + 253) / 254;
+}
+
+/* Skip volume label, hidden/system files, and dot entries - including the
+   macOS .DS_Store / ._* clutter, whose 8.3 name is mangled but whose long
+   name still starts with '.'. */
+static bool browse_fat_skip(const FILINFO *info) {
+  if (info->fattrib & (AM_VOL | AM_HID | AM_SYS)) return true;
+  if (info->fname[0] == '.') return true;
+  if (info->lfn[0]  == '.') return true;
+  return false;
+}
+
+/* out[]: up to `cap` smallest entries with key > *anchor (or smallest of all
+   if anchor==NULL), ascending. *hit_end = the run reaches the dir end. */
+uint8_t browse_fat_fill(path_t *path, const browse_entry_t *anchor,
+                        browse_entry_t out[], uint8_t cap, bool *hit_end) {
+  DIR     dir;
+  FILINFO info;
+  browse_entry_t c;
+  uint8_t n = 0;
+  bool    overflow = false;
+
+  *hit_end = true;
+  info.lfn = ops_scratch;             /* shared LFN read sink (browser is single-threaded) */
+  if (l_opendir(&partition[path->part].fatfs, path->dir.fat, &dir) != FR_OK)
+    return 0;
+  while (f_readdir(&dir, &info) == FR_OK && info.fname[0]) {
+    if (browse_fat_skip(&info)) continue;
+    browse_fat_build(path->part, &info, &c);
+    if (anchor && browse_key_cmp(&c, anchor) <= 0) continue;
+    if (n < cap) {
+      uint8_t i = n;
+      while (i > 0 && browse_key_cmp(&out[i-1], &c) > 0) { out[i] = out[i-1]; i--; }
+      out[i] = c; n++;
+    } else {
+      overflow = true;
+      if (browse_key_cmp(&c, &out[cap-1]) < 0) {
+        uint8_t i = cap - 1;
+        while (i > 0 && browse_key_cmp(&out[i-1], &c) > 0) { out[i] = out[i-1]; i--; }
+        out[i] = c;
+      }
+    }
+  }
+  *hit_end = !overflow;
+  return n;
+}
+
+/* out: the largest entry with key < *anchor. Returns false if none. */
+bool browse_fat_prev(path_t *path, const browse_entry_t *anchor, browse_entry_t *out) {
+  DIR     dir;
+  FILINFO info;
+  browse_entry_t c;
+  bool    found = false;
+
+  info.lfn = ops_scratch;             /* shared LFN read sink (browser is single-threaded) */
+  if (l_opendir(&partition[path->part].fatfs, path->dir.fat, &dir) != FR_OK)
+    return false;
+  while (f_readdir(&dir, &info) == FR_OK && info.fname[0]) {
+    if (browse_fat_skip(&info)) continue;
+    browse_fat_build(path->part, &info, &c);
+    if (browse_key_cmp(&c, anchor) >= 0) continue;
+    if (!found || browse_key_cmp(&c, out) > 0) { *out = c; found = true; }
+  }
+  return found;
+}
+
+/* out[]: the `cap` LARGEST entries, ascending (for wrap to the last page).
+   *at_start = fewer than cap entries exist (so the first is also visible). */
+uint8_t browse_fat_last(path_t *path, browse_entry_t out[], uint8_t cap, bool *at_start) {
+  DIR     dir;
+  FILINFO info;
+  browse_entry_t c;
+  uint8_t n = 0;
+
+  *at_start = true;
+  info.lfn = ops_scratch;             /* shared LFN read sink (browser is single-threaded) */
+  if (l_opendir(&partition[path->part].fatfs, path->dir.fat, &dir) != FR_OK)
+    return 0;
+  while (f_readdir(&dir, &info) == FR_OK && info.fname[0]) {
+    if (browse_fat_skip(&info)) continue;
+    browse_fat_build(path->part, &info, &c);
+    if (n < cap) {
+      uint8_t i = n;
+      while (i > 0 && browse_key_cmp(&out[i-1], &c) > 0) { out[i] = out[i-1]; i--; }
+      out[i] = c; n++;
+    } else if (browse_key_cmp(&c, &out[0]) > 0) {
+      uint8_t i = 0;
+      while (i < cap - 1 && browse_key_cmp(&out[i+1], &c) < 0) { out[i] = out[i+1]; i++; }
+      out[i] = c;
+    }
+  }
+  *at_start = (n < cap);
+  return n;
+}
+
+/* out: the entry whose cluster == target (unique within a FAT dir), for
+   restoring the highlight to a child we descended from. false if not found. */
+bool browse_fat_find_cluster(path_t *path, uint32_t cluster, browse_entry_t *out) {
+  DIR     dir;
+  FILINFO info;
+
+  info.lfn = ops_scratch;             /* shared LFN read sink (browser is single-threaded) */
+  if (l_opendir(&partition[path->part].fatfs, path->dir.fat, &dir) != FR_OK)
+    return false;
+  while (f_readdir(&dir, &info) == FR_OK && info.fname[0]) {
+    if (browse_fat_skip(&info)) continue;
+    if (info.clust != cluster)  continue;      // cheap filter before building the key
+    browse_fat_build(path->part, &info, out);
+    return true;
+  }
+  return false;
+}
+
+/**
  * fat_readdir - readdir wrapper for FAT
  * @dh  : directory handle as set up by opendir
  * @dent: CBM directory entry for returning data
@@ -1172,42 +1424,14 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
     /* Search for the file extension */
     exttype_t ext = check_extension(finfo.fname, &ptr);
     if (ext == EXT_IS_X00) {
-      /* [PSRU]00 file - try to read the internal name */
-      uint8_t *name = p00cache_lookup(dh->part, finfo.clust);
+      /* [PSRU]00 file: display the internal CBM name from the file's header
+         (dent->name was zeroed above). On any failure fall through and show it
+         under its FAT name with this type. */
       typechar = *ptr;
-
-      if (name != NULL) {
-        /* lookup successful */
-        memcpy(dent->name, name, CBM_NAME_LENGTH);
-      } else {
-        /* read name from file */
-        UINT bytesread;
-
-        res = l_opencluster(&partition[dh->part].fatfs, &partition[dh->part].imagehandle, finfo.clust);
-        if (res != FR_OK)
-          goto notp00;
-
-        res = f_read(&partition[dh->part].imagehandle, ops_scratch, P00_HEADER_SIZE, &bytesread);
-        if (res != FR_OK)
-          goto notp00;
-
-        if (memcmp_P(ops_scratch, p00marker, P00MARKER_LENGTH))
-          goto notp00;
-
-        /* Copy the internal name - dent->name is still zeroed */
-        ustrcpy(dent->name, ops_scratch + P00_CBMNAME_OFFSET);
-
-        /* Some programs pad the name with 0xa0 instead of 0 */
-        ptr = dent->name;
-        for (uint8_t i=0;i<16;i++,ptr++)
-          if (*ptr == 0xa0)
-            *ptr = 0;
-
-        /* add name to cache */
-        p00cache_add(dh->part, finfo.clust, dent->name);
+      if (fat_lookup_p00_name(dh->part, finfo.clust, dent->name)) {
+        finfo.fsize -= P00_HEADER_SIZE;
+        dent->opstype = OPSTYPE_FAT_X00;
       }
-      finfo.fsize -= P00_HEADER_SIZE;
-      dent->opstype = OPSTYPE_FAT_X00;
 
     } else if (ext == EXT_IS_TYPE && (globalflags & EXTENSION_HIDING)) {
       /* Type extension */
@@ -1220,7 +1444,6 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
       typechar = 'P';
     }
 
-  notp00:
     /* Set the file type */
     switch (typechar) {
     case 'P':
@@ -1511,8 +1734,11 @@ uint8_t fat_getdirlabel(path_t *path, uint8_t *label) {
     }
   }
 
-  if (*name)
-    memcpy(label, name, ustrlen(name));
+  if (*name) {
+    uint8_t n = ustrlen(name);                   /* name may be a full LFN now */
+    if (n > CBM_NAME_LENGTH) n = CBM_NAME_LENGTH; /* label is a 16-char CBM field */
+    memcpy(label, name, n);
+  }
 
   if (res == FR_OK)
     return 0;
@@ -1815,12 +2041,15 @@ uint8_t image_unmount(uint8_t part) {
 
   if (display_found) {
     /* Send current path to display */
-    path_t path;
+    path_t  path;
+    uint8_t label[CBM_NAME_LENGTH + 1];   /* own buffer: must NOT alias ops_scratch,
+                                             which fat_getdirlabel uses as its LFN sink */
 
     path.part    = part;
     path.dir.fat = partition[part].current_dir.fat;
-    fat_getdirlabel(&path, ops_scratch);
-    display_current_directory(part, ops_scratch);
+    fat_getdirlabel(&path, label);
+    label[CBM_NAME_LENGTH] = 0;            /* terminate the 16-char CBM field for the display */
+    display_current_directory(part, label);
   }
 
   partition[part].fop = &fatops;

@@ -79,7 +79,24 @@
 /* _MAX_LFN_LENGTH+1 characters long!               */
 /* Note that if _USE_LFN_DBCS is set, this value    */
 /* represents the characters needed, not bytes      */
-#define _MAX_LFN_LENGTH 44
+#define _MAX_LFN_LENGTH 255  /* absolute ceiling a long name can reach (VFAT max).
+                                f_readdir TRUNCATES to the RUNTIME `lfn_limit` (not
+                                this constant) and never discards, so the shared
+                                sinks stay small: ops_scratch is only _LFN_SCAN_LEN+1
+                                and lfn_limit defaults to _LFN_SCAN_LEN. Only the LCD
+                                browser's on-demand scroll read raises lfn_limit to
+                                _MAX_LFN_LENGTH into a transient stack buffer, so no
+                                permanent buffer scales with the full length. */
+#define _LFN_SCAN_LEN   44   /* default lfn_limit; sizes ops_scratch (_LFN_SCAN_LEN+1 =
+                                45 bytes). MUST cover the longest name a CBM write can
+                                round-trip through FAT: the "xe5" escape encoding (Ultimate-
+                                64 compatible) reaches 44 chars in the worst case (16 CBM
+                                chars, all case-alternating, e.g. "aBcDeFgHiJkLmNoP"), so a
+                                shorter limit would silently truncate such a name on read-
+                                back and make the file unreachable. Equals petsd's original
+                                _MAX_LFN_LENGTH. NOT an LCD-width limit: the browser stores
+                                only BROWSE_NAME_MAX chars per entry and re-reads the full
+                                name on demand. */
 
 /* When _USE_LFN_DBCS is set to 1, FILINFO.lfn will contain a DBCS string, not
 /  a simple ASCII string  */
@@ -113,6 +130,8 @@
 #define _USE_UTIME   0
 
 #include "integer.h"
+
+extern WORD lfn_limit;       /* runtime LFN truncation length (see f_readdir); defaults to _LFN_SCAN_LEN */
 
 #if _USE_LFN_DBCS != 0
 #define S_LFN_OFFSET 26

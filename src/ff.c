@@ -1966,6 +1966,8 @@ FRESULT l_opendir(FATFS* fs, DWORD cluster, DIR *dj) {
 /*-----------------------------------------------------------------------*/
 
 
+WORD lfn_limit = _LFN_SCAN_LEN;   /* f_readdir truncates each LFN to this many chars */
+
 FRESULT f_readdir (
   DIR *dj,           /* Pointer to the directory object */
   FILINFO *finfo     /* Pointer to file information to return */
@@ -1976,9 +1978,6 @@ FRESULT f_readdir (
 #if _USE_LFN != 0
   WORD len=0;
   BYTE i,pos;
-# ifdef _MAX_LFN_LENGTH
-  BOOL skiplfn = FALSE;
-# endif
 
   if (finfo->lfn) {
     finfo->lfn[0]=0;   /* set first char to null */
@@ -2003,21 +2002,16 @@ FRESULT f_readdir (
       if(finfo->lfn && ((dir[DIR_Attr] & AM_LFN) == AM_LFN)) {
         pos=((*dir & 0x1f)-1)*S_LFN_OFFSET;  /* get offset */
 # ifdef _MAX_LFN_LENGTH
-        if (skiplfn || pos >= _MAX_LFN_LENGTH * S_LFN_INCREMENT) {
-          skiplfn = TRUE;
-          goto skippedlfn;
-        }
+        if (pos >= lfn_limit * S_LFN_INCREMENT)   /* this LFN part starts past the limit */
+          goto skippedlfn;                        /* drop it, keep the lower parts (TRUNCATE, never discard) */
 # endif
         i=0;
         while(i<13) {
           if(!dir[pgm_read_byte(LFN_pos+i)] && !dir[pgm_read_byte(LFN_pos+i)+1])
             break;
-          if (pos >= _MAX_LFN_LENGTH) {
-            len = 0;
-            i = 0;
-            skiplfn = TRUE;
-            break;
-          }
+# ifdef _MAX_LFN_LENGTH
+          if (pos >= lfn_limit) break;            /* truncate this part at the limit, keep what fits */
+# endif
           finfo->lfn[pos]=dir[pgm_read_byte(LFN_pos+i)];
 # if _USE_LFN_DBCS != 0
           finfo->lfn[pos+1]=dir[pgm_read_byte(LFN_pos+i)+1];
@@ -2027,10 +2021,10 @@ FRESULT f_readdir (
         }
         len+=i;
       } else {
-# ifdef _MAX_LFN_LENGTH
-        skiplfn = FALSE;
-# endif
         if (finfo->lfn) {
+# ifdef _MAX_LFN_LENGTH
+          if (len > lfn_limit) len = lfn_limit;   /* clamp terminator to the runtime limit / buffer */
+# endif
           finfo->lfn[len*S_LFN_INCREMENT]=0;
 # if _USE_LFN_DBCS != 0
           finfo->lfn[len*S_LFN_INCREMENT+1]=0;

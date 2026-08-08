@@ -261,7 +261,10 @@ static uint8_t create_changelist(path_t *path, uint8_t *filename) {
         /* write the name of disk image to file */
         found = 1;
 
-        if (ops_scratch[0] != 0)
+        /* Use the long name only if it is COMPLETE (shorter than the scan limit, so
+           not truncated by f_readdir); a truncated name would not re-mount. Otherwise
+           the 8.3 name, which always fits command_buffer and mounts. */
+        if (ops_scratch[0] != 0 && ustrlen(ops_scratch) < _LFN_SCAN_LEN)
           name = ops_scratch;
         else
           name = finfo.fname;
