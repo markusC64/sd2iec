@@ -91,6 +91,10 @@ int main(void) {
 
   /* Anything that does something which needs the system clock */
   /* should be placed after system_init_late() */
+  /* The first I2C access (rtc_init) may race the on-board ATtiny25, which
+     holds SCL low while it boots; softi2c.c's finite SCL-stretch timeout keeps
+     that from hanging the firmware - see softi2c.c ("petSD+ won't start on
+     some 1284p"). No boot poll is needed. */
   rtc_init();    // accesses I2C
   disk_init();   // accesses card
   read_configuration(); // restores configuration, may change device address

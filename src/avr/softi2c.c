@@ -31,12 +31,39 @@
 #define SOFTI2C_SDA _BV(SOFTI2C_BIT_SDA)
 #define SOFTI2C_SCL _BV(SOFTI2C_BIT_SCL)
 
+/* Upper bound for the SCL clock-stretch wait in set_scl().
+
+   Per I2C spec a slave may stretch SCL arbitrarily, so stock sd2iec waits
+   indefinitely (loop_until_bit_is_set). On the petSD+ that is dangerous at
+   power-on: the on-board ATtiny25 (I2C slave 0x4C - the LCD/PWM/IEC-enable
+   controller, IC5) shares the soft-I2C bus and holds SCL low while it boots
+   and initialises the HD44780 display. If the ATmega loses that power-up race
+   its first I2C access waits forever - the documented "petSD+ won't start on
+   some 1284p" hang.
+
+   So bound every SCL wait by a single finite timeout, chosen WELL above the
+   longest legitimate stretch on this board (the ATtiny's boot + display init,
+   tens of ms, and the IO_IEC transceiver-enable write) yet finite so a
+   not-yet-ready or stuck slave can never freeze the firmware. This models the
+   hardware's real worst-case stretch instead of a readiness poll that can
+   itself lose the race - which used to leave the IEC-enable write cut short
+   (-> DEVICE NOT PRESENT on the C64). No global state, no boot poll: robust on
+   every board and in every power-on order. */
+#ifndef SOFTI2C_SCL_TIMEOUT_US
+#define SOFTI2C_SCL_TIMEOUT_US 100000UL   /* 100 ms */
+#endif
+
 static void set_scl(uint8_t x) {
   if (x) {
     SOFTI2C_DDR  &= (uint8_t)~SOFTI2C_SCL;
     SOFTI2C_PORT |= SOFTI2C_SCL;
-    // Clock stretching
-    loop_until_bit_is_set(SOFTI2C_PIN, SOFTI2C_BIT_SCL);
+    /* Clock stretching: wait for the slave to release SCL, but never longer
+       than SOFTI2C_SCL_TIMEOUT_US so a not-yet-ready/stuck slave can't hang. */
+    uint32_t timeout = SOFTI2C_SCL_TIMEOUT_US;
+    while (bit_is_clear(SOFTI2C_PIN, SOFTI2C_BIT_SCL) && timeout) {
+      _delay_us(1);
+      timeout--;
+    }
   } else {
     SOFTI2C_DDR  |= SOFTI2C_SCL;
     SOFTI2C_PORT &= (uint8_t)~SOFTI2C_SCL;
