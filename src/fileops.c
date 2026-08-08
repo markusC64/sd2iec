@@ -1062,7 +1062,7 @@ void file_open(uint8_t secondary) {
         if (dent.opstype == OPSTYPE_FAT || dent.opstype == OPSTYPE_FAT_X00)
           dent.pvt.fat.realname[0] = 0;
 #endif
-        if (!ustrchr(fname, '*') && !ustrchr(fname, '?' && (*fname != 160)))
+        if (!ustrchr(fname, '*') && !ustrchr(fname, '?') && (*fname != 160))
         {
            memset(&dent, 0, sizeof(dent));
            ustrncpy(dent.name, fname, CBM_NAME_LENGTH);
