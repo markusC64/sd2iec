@@ -1345,21 +1345,25 @@ uint8_t d64_mount(path_t *path, uint8_t *name) {
   case 533248:
     imagetype = D64_TYPE_D80;
     memcpy_P(&partition[part].d64data, &d80param, sizeof(struct param_s));
+    trk = 38; sec = 0;
     break;
 
   case 535331:
     imagetype = D64_TYPE_D80 | D64_HAS_ERRORINFO;
     memcpy_P(&partition[part].d64data, &d80param, sizeof(struct param_s));
+    trk = 38; sec = 0;
     break;
 
   case 1066496:
     imagetype = D64_TYPE_D82;
     memcpy_P(&partition[part].d64data, &d82param, sizeof(struct param_s));
+    trk = 38; sec = 0;
     break;
 
   case 1070662:
     imagetype = D64_TYPE_D82 | D64_HAS_ERRORINFO;
     memcpy_P(&partition[part].d64data, &d82param, sizeof(struct param_s));
+    trk = 38; sec = 0;
     break;
 
   default:
@@ -2389,6 +2393,9 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
       if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
           if (d64_format_track(part, buf, 53))
               return;
+      if (((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D80) || ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D82) )
+          if (d64_format_track(part, buf, 38))
+              return;
 
        /* clear the entire directory track */
        /* This is not accurate, but I do not care. */
@@ -2441,7 +2448,7 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
   else
   {
      buffer_t *buffer = alloc_buffer();
-     uint8_t sector;
+     uint8_t track, sector;
    
      /* allow format on DNP only when in the root directory */
      if ((partition[path->part].imagetype & D64_TYPE_MASK) == D64_TYPE_DNP &&
@@ -2454,8 +2461,16 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
         sector = path->dir.dxx.sector;
      else
         sector = 0;
+        
+     track = path->dir.dxx.track;
+     switch (partition[path->part].imagetype & D64_TYPE_MASK) {
+       case D64_TYPE_D80:
+       case D64_TYPE_D82:
+          track = 38;
+          break;
+     }
 
-     if (image_read(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256))
+     if (image_read(path->part, sector_offset(path->part, track, sector), buffer->data, 256))
      {
        cleanup_and_free_buffer(buffer);
        return;
@@ -2474,10 +2489,15 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
        case D64_TYPE_DNP:
           buffer->data[2] = attr ? 0x3E : 0x48;
           break;
+
+       case D64_TYPE_D80:
+       case D64_TYPE_D82:
+          buffer->data[2] = attr ? 0x3F : 0x43;
+          break;
      }
 
      partition[path->part].imagetype &= ~D64_IS_READLNLY;
-     image_write(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256, 1);
+     image_write(path->part, sector_offset(path->part, track, sector), buffer->data, 256, 1);
      cleanup_and_free_buffer(buffer);
      if (attr) partition[path->part].imagetype |= D64_IS_READLNLY;
   }
@@ -2486,14 +2506,19 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
 static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
 {
    buffer_t *buffer = alloc_buffer();
-   uint8_t sector;
+   uint8_t track, sector;
    
    if ((partition[path->part].imagetype & D64_TYPE_MASK) == D64_TYPE_DNP)
      sector = path->dir.dxx.sector;
    else
      sector = 0;
+     
+  track = path->dir.dxx.track;
+  if (((partition[path->part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D80) || ((partition[path->part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D82) )
+     track = 38;
+     
 
-  if (image_read(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256))
+  if (image_read(path->part, sector_offset(path->part, track, sector), buffer->data, 256))
   {
       cleanup_and_free_buffer(buffer);
       return;
@@ -2509,7 +2534,7 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
       memcpy(buffer->data + offset + 18, newid, ustrlen(newid));
    }
 
-  image_write(path->part, sector_offset(path->part, path->dir.dxx.track, sector), buffer->data, 256, 1);
+  image_write(path->part, sector_offset(path->part, track, sector), buffer->data, 256, 1);
    cleanup_and_free_buffer(buffer);
 }
 
