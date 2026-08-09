@@ -2340,12 +2340,109 @@ static void format_dnp_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
 }
 
 static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
-  // TODO: implement D80 format
+  allocate_sector(part, 39, 0);
+  allocate_sector(part, 39, 1);
+  allocate_sector(part, 38, 0);
+  allocate_sector(part, 38, 3);
+  
+  uint8_t *ptr = bam_buffer->data;
+  *ptr++ = 38;
+  *ptr++ = 3;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 1;
+  *ptr++ = 0x33;
+
+  (void)sectors_free(part, 52);
+  ptr = bam_buffer->data;
+  *ptr++ = 39;
+  *ptr++ = 1;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 0x33;
+  *ptr++ = 0x4e;
+  bam_buffer->mustflush = 1;
+  
+  ptr = buf->data;
+  memset(ptr, 0, 256);
+  *ptr++ = 38;
+  *ptr++ = 0;
+  *ptr++ = 0x43;
+
+  /* copy disk label and ID to buffer */
+  idbuf[3] = '2';
+  idbuf[4] = 'C';
+  format_copy_label(part, buf->data, name, idbuf);
+
+  if (image_write(part, 0x44e00L, buf->data, 256, 0))
+    return;
+
+  clear_dir_sector(part, 39, 1, buf->data);
 }
 
 static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
-}
-  // TODO: implement D82 format
+  allocate_sector(part, 39, 0);
+  allocate_sector(part, 39, 1);
+  allocate_sector(part, 38, 0);
+  allocate_sector(part, 38, 3);
+  allocate_sector(part, 38, 6);
+  allocate_sector(part, 38, 9);
+  
+  uint8_t *ptr = bam_buffer->data;
+  *ptr++ = 38;
+  *ptr++ = 3;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 1;
+  *ptr++ = 0x33;
+  bam_buffer->mustflush = 1;
+
+  (void)sectors_free(part, 52);
+  ptr = bam_buffer->data;
+  *ptr++ = 38;
+  *ptr++ = 6;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 0x33;
+  *ptr++ = 0x65;
+  bam_buffer->mustflush = 1;
+
+  (void)sectors_free(part, 102);
+  ptr = bam_buffer->data;
+  *ptr++ = 38;
+  *ptr++ = 9;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 0x65;
+  *ptr++ = 0x97;
+  bam_buffer->mustflush = 1;
+
+  (void)sectors_free(part, 152);
+  ptr = bam_buffer->data;
+  *ptr++ = 39;
+  *ptr++ = 1;
+  *ptr++ = 0x43;
+  *ptr++ = 0;
+  *ptr++ = 0x97;
+  *ptr++ = 0x9B;
+  bam_buffer->mustflush = 1;
+  
+  ptr = buf->data;
+  memset(ptr, 0, 256);
+  *ptr++ = 38;
+  *ptr++ = 0;
+  *ptr++ = 0x43;
+
+  /* copy disk label and ID to buffer */
+  idbuf[3] = '2';
+  idbuf[4] = 'C';
+  format_copy_label(part, buf->data, name, idbuf);
+
+  if (image_write(part, 0x44e00L, buf->data, 256, 0))
+    return;
+
+  clear_dir_sector(part, 39, 1, buf->data);
+}  
 
 static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
   buffer_t *buf;

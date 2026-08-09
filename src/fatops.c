@@ -2319,16 +2319,6 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
     return;
   }
 
-  if (imagetype == IMG_IS_D80) {
-    f_close(&partition[path->part].imagehandle);
-    return;
-  }
-
-  if (imagetype == IMG_IS_D82) {
-    f_close(&partition[path->part].imagehandle);
-    return;
-  }
-
   if (d64_mount(path, name)) {
     f_close(&partition[path->part].imagehandle);
     return;
