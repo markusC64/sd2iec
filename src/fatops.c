@@ -375,11 +375,12 @@ imgtype_t check_imageext(uint8_t *name) {
       return IMG_IS_DNP;
     if ((s == '6' && t == '4') || (s == '4' && t == '1'))
       return IMG_IS_D41;
-    if (t == '1') {
-      if (s == '7')
-        return IMG_IS_D71;
-      if (s == '8')
-        return IMG_IS_D81;
+    if (s == '7' && t == '1')
+      return IMG_IS_D71;
+    if (s == '8') {
+      if (t == '0') return IMG_IS_D80; 
+      else if (t == '1') return IMG_IS_D81;
+      else if (t == '2') return IMG_IS_D82;
     }
   }
 
@@ -2048,6 +2049,12 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
         break;
       case IMG_IS_D81:
         fsize = D81_SIZE;
+        break;
+      case IMG_IS_D80:
+        fsize = 533248;
+        break;
+      case IMG_IS_D82:
+        fsize = 1066496;
         break;
       case IMG_IS_DNP:
         if (id != 0) fsize = 65536 * (100*(id[0]-'0') + 10*(id[1]-'0') + (id[2]-'0'));
