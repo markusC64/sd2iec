@@ -2514,9 +2514,6 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
      sector = 0;
      
   track = path->dir.dxx.track;
-  if (((partition[path->part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D80) || ((partition[path->part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D82) )
-     track = 38;
-     
 
   if (image_read(path->part, sector_offset(path->part, track, sector), buffer->data, 256))
   {
