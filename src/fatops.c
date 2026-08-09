@@ -2328,6 +2328,7 @@ void fat_format_image(path_t *path, uint8_t *name, uint8_t *id) {
      partition[path->part].imagetype &= ~D64_IS_READLNLY;
 
   partition[path->part].fop = &d64ops;
+  partition[path->part].imagetype &= ~D64_IS_READLNLY;
   format(path, name, id);
   image_unmount(path->part);
 }
