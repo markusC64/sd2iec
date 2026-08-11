@@ -856,8 +856,15 @@ void file_open(uint8_t secondary) {
   /* Assume everything will go well unless proven otherwise */
   set_error(ERROR_OK);
 
-  /* Strip 0x0d characters from end of name (C2BD-C2CA) */
-  if (command_length > 1) {
+  /* Strip 0x0d characters from end of name (C2BD-C2CA).
+   * Exception: a REL open ends in ",L,<reclen>", where <reclen> is the last
+   * byte and may legitimately be 0x0d (record length 13). Detect that pattern
+   * ("L," directly before the last byte) and keep the reclen; otherwise the
+   * record length is lost and e.g. "NAME,L,"+CHR$(13) cannot create the file. */
+  if (command_length > 1 &&
+      !(command_length >= 3 &&
+        command_buffer[command_length-2] == ',' &&
+        command_buffer[command_length-3] == 'L')) {
     if (command_buffer[command_length-1] == 0x0d)
       command_length -= 1;
     else if (command_buffer[command_length-2] == 0x0d)
