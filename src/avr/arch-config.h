@@ -1506,6 +1506,10 @@ typedef uint8_t iec_bus_t;
 #  endif
 #endif
 
+/* Upstream sd2iec fastloader modules (fl-krill.c, fl-hypraload.c, ...) */
+/* use the original name for the same function                          */
+#define set_atn_irq(x) set_iec_atn_irq(x)
+
 /* IEC output functions */
 #ifdef IEC_OUTPUTS_INVERTED
 #  define COND_INV(x) (!(x))

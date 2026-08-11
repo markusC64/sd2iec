@@ -522,11 +522,19 @@ turbodisk_byte:
         rjmp    turbodisk_byte
 
         ;; Byte preparation
+#ifdef IEC_OUTPUTS_INVERTED
         com     r24             ; Invert the data byte
+#else
+        nop                     ; petSD+ non-inverted: NO com, keep exact timing
+#endif
 
         ;; All bus lines high
         in      r18, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r18, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#else
+        ori     r18,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; petSD+ noninv: release = drive high
+#endif
         out     _SFR_IO_ADDR(IEC_OUTPUT), r18
 
         ;; Wait until data is high
@@ -539,7 +547,11 @@ turbodisk_byte:
 
 tdbitloop:
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT) ; 1 - read & mask unused IEC port lines
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1 - petSD+ noninv: released=high
+#endif
         bst     r24, 7              ; 1 - grab bit 7
         bld     r19, IEC_OPIN_CLOCK ; 1 - store in clock bit
         bst     r24, 6              ; 1 - grab bit 6
@@ -562,8 +574,13 @@ tdbitloop:
 
         ;; Data high, Clock low
         in      r18, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r18, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
-        ori     r18, IEC_OBIT_CLOCK
+        ori     r18, IEC_OBIT_CLOCK ; Data high, Clock low
+#else
+        ori     r18,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+        andi    r18, ~IEC_OBIT_CLOCK ; petSD+ noninv: Data high, Clock low
+#endif
         out     _SFR_IO_ADDR(IEC_OUTPUT), r18
 
         ret
@@ -580,7 +597,11 @@ turbodisk_buffer:
 
         ;; All bus lines high
         in      r18, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r18, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#else
+        ori     r18,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; petSD+ noninv: release = drive high
+#endif
         out     _SFR_IO_ADDR(IEC_OUTPUT), r18
 
         movw    r30,r24         ; output pointer
@@ -596,14 +617,22 @@ turbodisk_buffer:
 tdbyteloop:
         ld      r0, Z+          ; 2 - load byte
         ldi     r20, 4          ; 1 - bitpair counter
+#ifdef IEC_OUTPUTS_INVERTED
         com     r0              ; 1 - invert data byte
+#else
+        nop                     ; 1 - petSD+ non-inverted: NO com, keep exact timing
+#endif
 
         ;; Waste another 12 us
         delay_us 12, -4
 
 tdbitloop2:
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT) ; 1 - read & mask unused IEC port lines
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1 - petSD+ noninv: released=high
+#endif
         bst     r0, 7               ; 1 - grab bit 7
         bld     r19, IEC_OPIN_CLOCK ; 1 - store in clock bit
         bst     r0, 6               ; 1 - grab bit 6
@@ -633,8 +662,13 @@ tdbitloop2:
 
         ;; Data high, Clock low
         in      r18, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r18, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
-        ori     r18, IEC_OBIT_CLOCK
+        ori     r18, IEC_OBIT_CLOCK ; Data high, Clock low
+#else
+        ori     r18,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+        andi    r18, ~IEC_OBIT_CLOCK ; petSD+ noninv: Data high, Clock low
+#endif
         out     _SFR_IO_ADDR(IEC_OUTPUT), r18
 
         ret
@@ -654,7 +688,11 @@ tdbitloop2:
 send_bits_to_clk_data:
         ; rcall                  ; 3 or 4
         in   r19, _SFR_IO_ADDR(IEC_OUTPUT) ; 1 - read & mask unused IEC port lines
+#ifdef IEC_OUTPUTS_INVERTED
         andi r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1
+#else
+        ori  r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1 - petSD+ noninv: released=high
+#endif
         bst  r0, 0               ; 1 - take bit 0 (lsb)
         bld  r19, IEC_OPIN_CLOCK ; 1 - for CLOCK line
         bst  r0, 1               ; 1 - take bit 1
@@ -733,7 +771,11 @@ fastloader_fc3_send_block:
 fc3_byteloop:
         ld      r0, Z+          ; 2 - load byte
 
-        com     r0              ; 1 - negate all bits
+#ifdef IEC_OUTPUTS_INVERTED
+        com     r0              ; 1 - negate all bits (inverted-output hardware)
+#else
+        nop                     ; 1 - petSD+ non-inverted: NO com, keep exact timing
+#endif
 
         ldi     r20, 4          ; 1 - bitpair counter
 fc3_bitloop:
@@ -756,7 +798,11 @@ fc3_next_byte:
 
         ; release CLOCK and DATA
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT) ; read & mask unused IEC port lines
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; petSD+ noninv: release = drive high
+#endif
         out     _SFR_IO_ADDR(IEC_OUTPUT), r19 ; release CLOCK and DATA
 
         sei
@@ -827,6 +873,11 @@ fc3_get_byte:
 fc3_oldfreeze_pal_send:
         cli
         mov     r0, r24         ; bitpair subroutine expects data in r0
+#ifdef IEC_OUTPUTS_INVERTED
+                                ; inverted HW: hardware inversion supplies the 0xff eor; send r0 as-is (data-bit 1 -> line LOW)
+#else
+        com     r0              ; petSD+ non-inverted: send_bits_to_clk_data ori-releases (HIGH), so invert data to keep data-bit 1 = line LOW
+#endif
 
         ;; clear busy signal
         xsbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
@@ -875,6 +926,11 @@ fc3_oldfreeze_pal_send:
 fc3_oldfreeze_ntsc_send:
         cli
         mov     r0, r24         ; bitpair subroutine expects data in r0
+#ifdef IEC_OUTPUTS_INVERTED
+                                ; inverted HW: hardware inversion supplies the 0xff eor; send r0 as-is (data-bit 1 -> line LOW)
+#else
+        com     r0              ; petSD+ non-inverted: send_bits_to_clk_data ori-releases (HIGH), so invert data to keep data-bit 1 = line LOW
+#endif
 
         ;; clear busy signal
         xsbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
@@ -1009,7 +1065,11 @@ dreamload_send_byte:
 
         ; inverse all bits
         mov     r0, r24
-        com     r0
+#ifdef IEC_OUTPUTS_INVERTED
+        com     r0              ; 1 - negate all bits (inverted-output hardware)
+#else
+        nop                     ; 1 - petSD+ non-inverted: NO com, keep exact timing
+#endif
 
         ldi     r18, 2          ; loop counter
 
@@ -1105,7 +1165,11 @@ uload3_send_byte:
 
         ;; prepare transmission
         mov     r0, r24         ;1 - move data to output register
-        com     r0              ;1 - invert byte
+#ifdef IEC_OUTPUTS_INVERTED
+        com     r0              ;1 - invert byte (inverted-output hardware)
+#else
+        nop                     ;1 - petSD+ non-inverted: NO com, keep exact timing
+#endif
         ldi     r24, 4          ;1 - number of loops
         delay_us 14-8, -8+6+3+RET_OFFSET   ; initial delay before first bit pair
 
@@ -1153,8 +1217,17 @@ epyxcart_send_byte:
 
         ;; prepare data
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#endif
 
+#ifdef IEC_OUTPUTS_INVERTED
+        ;; inverted-output HW complements the data bits electrically (Epyx eor 0xff) - no com needed
+#else
+        com     r24                 ; petSD+ non-inverted: apply Epyx eor 0xff in software
+#endif
         ;; wait for DATA high or ATN low
 1:      sbis    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_ATN
         rjmp    epyxcart_atnabort
@@ -1290,13 +1363,27 @@ geos_send_byte_common:
         xsbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
         rcall   delay1us
 
+#ifdef IEC_OUTPUTS_INVERTED
+        ;; inverted HW: no pre-inversion here; lower nibble is sent raw and the upper
+        ;; nibble is inverted by the existing 'com r24' in geos_send_byte_tail (line 1369)
+#else
+        com     r24             ; petSD+ noninv: pre-invert data so bld emits correct bus polarity
+                                ; (placed before the clock-low sync loop -> post-sync cycle counts
+                                ;  are unchanged; for 1581_21/wheels44 the double-com yields raw
+                                ;  data, exactly what the fixed send_bits_to_clk_data needs)
+#endif
+
         ;; wait until CLOCK is low
 1:      sbic    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_CLOCK
         rjmp    1b
 
         ;; preserve non-IEC lines on IEC_OUTPUT port
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT) ; 1
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; 1 - petSD+ noninv: released=high
+#endif
         mov     r0, r19             ; 1
         ret                         ; 4 or 5
 
@@ -1685,7 +1772,11 @@ ar6_1581_send_byte:
         cli
 
         ;; set up data byte for transmission
+#ifdef IEC_OUTPUTS_INVERTED
         com     r24
+#else
+        nop
+#endif
         mov     r0, r24
 
         ;; clock high
@@ -1846,10 +1937,13 @@ n0sdos_send_byte:
 
         ;; set up data byte for transmission
         mov     r0, r24
+#ifndef IEC_OUTPUTS_INVERTED
+        com     r0              ; petSD+ non-inverted: complement data; send_bits_to_clk_data writes port bits literally
+#endif
 
         ;; clock and data high
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
 
         ;; wait until clock is high
 1:      sbis    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_CLOCK
@@ -1883,8 +1977,8 @@ n0sdos_send_byte:
         delay_us 5, -6-2-RET_OFFSET
 
         ;; set clock high, data low
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK ; 1
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA  ; 1
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK ; 1
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA  ; 1
 
         delay_us 6
 
@@ -1907,18 +2001,27 @@ ultraboot_send_byte:
 
         ;; prepare data
         in      r19, _SFR_IO_ADDR(IEC_OUTPUT)
+#ifdef IEC_OUTPUTS_INVERTED
         andi    r19, ~(IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ)
+#else
+        ori     r19,  (IEC_OBIT_DATA|IEC_OBIT_CLOCK|IEC_OBIT_ATN|IEC_OBIT_SRQ) ; petSD+ noninv: released = high
+#endif
 
+#ifdef IEC_OUTPUTS_INVERTED
+        ;; inverted HW: epyx_bitpair writes raw byte bits, no complement needed
+#else
+        com     r24             ; petSD+ noninv: complement data byte so epyx_bitpair emits correct bus polarity
+#endif
         ;; wait for DATA high
 1:      sbis    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_DATA
         rjmp    1b
 
         ;; 0 us: set DATA
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
 
         ;; 15 us: release DATA
         delay_us 15, -2
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
 
         mov     r0, r24                                         ; 1
 
@@ -1944,7 +2047,7 @@ ultraboot_send_byte:
 
         ;; 51 us: release DATA
         delay_us 8, -5-RET_OFFSET
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA         ; 2
 
         ;; 56 us: the host should have set DATA now
         delay_us 5, -1
@@ -1966,11 +2069,14 @@ hypraload_send_byte:
         cli
 
         mov     r0, r24
+#ifndef IEC_OUTPUTS_INVERTED
+        com     r0              ; petSD+ noninv: send_bits_to_clk_data writes port bits literally
+#endif
 
         rcall   wait_atn_low
 
         ;; release DATA
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
 
         rcall   wait_atn_high           ; 6 or 7 after ATN high
 
@@ -2002,7 +2108,7 @@ hypraload_send_byte:
         delay_us 25, -6-RET_OFFSET
 
         ;; set DATA
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
 
         sei
         ret
@@ -2021,7 +2127,11 @@ krill_send_byte_resend:
         ;; called from an ATOMIC_BLOCK, so no need to inhibit interrupts
 
         ;; set up data byte for transmission
+#ifdef IEC_OUTPUTS_INVERTED
         com     r24
+#else
+        nop
+#endif
 1:
         mov     r0, r24
 
@@ -2045,7 +2155,7 @@ krill_send_byte_resend:
         rcall   send_bits_to_clk_data ; 10+6 or 11+7
 
         delay_us 42-34, -7-RET_OFFSET
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK ; 2
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK ; 2
 
         delay_us 50-42, -2
 
@@ -2054,7 +2164,7 @@ krill_send_byte_resend:
         rjmp    2f
 
         ;; otherwise set clock to signal that we are going to send again
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
         rjmp    1b
 
 2:
@@ -2082,8 +2192,8 @@ krill_send_byte_resend:
         .global wof_sync
 wof_sync:
         ;; clock and data high
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
 
         ;; wait for DATA to become INACTIVE or ATN ACTIVE (C64 reset)
 0:      sbic    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_DATA  ; skip if active
@@ -2093,7 +2203,7 @@ wof_sync:
         rjmp    0b
 
         ;; set CLOCK ACTIVE
-1:      sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+1:      xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
         
         ;; wait for DATA to become ACTIVE or ATN ACTIVE (C64 reset)
 3:      sbis    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_DATA
@@ -2111,8 +2221,8 @@ wof_sync:
 wof_get_byte:
         
         ;; clock and data high
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
 
         ;; the game will keep DATA pulled during VIC DMA activity
         ;; and release when it's safe to transfer, so wait while
@@ -2158,7 +2268,7 @@ wof_get_byte:
         bld     r24, 7
 
         ;; set CLOCK ACTIVE
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK  ; 2
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK  ; 2
 
         ;; high=0, so one-complement result
         com     r24                                       ; 1
@@ -2183,11 +2293,16 @@ wof_get_byte:
         .global wof_put_byte
 wof_put_byte:
         ;; clock and data high
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
 
         ;; use r0 as temp register to shift bits out CLOCK/DATA lines
         mov     r0, r24
+#ifdef IEC_OUTPUTS_INVERTED
+        ;; inverted HW: raw byte already yields data bit=1 -> bus LOW; no com needed
+#else
+        com     r0              ; petSD+ non-inverted: invert so data bit=1 -> bus LOW
+#endif
 
         ;; the game will keep DATA pulled during VIC DMA activity
         ;; and release when it's safe to transfer, so wait while
@@ -2222,12 +2337,16 @@ wof_put_byte:
         .global n0s_iffl_put_byte
 n0s_iffl_put_byte:
         ;; clock and data high
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
-        cbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_DATA
+        xsbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
 
         ;; use r0 as temp register to shift bits out CLOCK/DATA lines
         mov     r0, r24
-        com     r0                                        ; negate all bits (a 0 in r24 pulls the line) 
+#ifdef IEC_OUTPUTS_INVERTED
+        com     r0                                        ; negate all bits (a 0 in r24 pulls the line)
+#else
+        nop                                               ; petSD+ noninv: send_bits_to_clk_data treats 0 as pull directly
+#endif
 
         ;; wait until DATA ACTIVE
 0:      sbic    _SFR_IO_ADDR(IEC_INPUT), IEC_PIN_DATA
@@ -2250,7 +2369,7 @@ n0s_iffl_put_byte:
         delay_cycles 8 * 8 - 16
 
         ;; pull clock
-        sbi     _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
+        xcbi    _SFR_IO_ADDR(IEC_OUTPUT), IEC_OPIN_CLOCK
 
         ret
 
