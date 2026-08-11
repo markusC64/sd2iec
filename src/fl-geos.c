@@ -569,6 +569,7 @@ static void wheels_check_diskchange(void) {
 
 /* Wheels WRITE operation (0306) */
 static void wheels_write_sector(uint8_t track, uint8_t sector, buffer_t *buf) {
+  set_error(ERROR_OK);   /* per-job status: start clean so this job reports only its own result */
   uart_putc('W');
   uart_puthex(track);
   uart_putc('/');
