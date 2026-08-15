@@ -357,9 +357,23 @@ Supported commands:
                2: Always write x00 format files.
                3: Use SEQ/USR/REL file extensions, no x00 header
                4: Same as 3, but also for PRG
-             If you set mode 3 or 4, extension hiding is automatically enabled.
-             This setting can be saved in the EEPROM using XW, the default
-             value is 1.
+               5: Same as 4, but additionally encode characters that
+                  cannot be stored in a FAT file name
+             If you set mode 3, 4 or 5, extension hiding is automatically
+             enabled. This setting can be saved in the EEPROM using XW,
+             the default value is 1.
+
+             In mode 5 file names are stored on FAT using an escape
+             scheme, so (almost) any PETSCII name can be used: PETSCII
+             codes below 32 or above 95, the characters :/\*"<>? that
+             FAT does not allow in file names and a leading '.' are
+             written as two hex digits enclosed in curly braces (a
+             single pair of braces may hold several encoded characters),
+             e.g. a PETSCII name ending in a shifted-space becomes
+             "NAME{A0}". File names matching a reserved DOS name (CON,
+             PRN, ...) are prefixed with an empty "{}". The encoding is
+             transparent: directory listings and file access use the
+             decoded PETSCII name.
 
              For compatibility with existing programs that write D64 files,
              PRG files that have D64, D41, D71, D81, DNP or M2I as an extension
@@ -373,6 +387,21 @@ Supported commands:
              "APPLICATION", "README.SEQ" will become a SEQ file named "README".
              This flag can be saved in the EEPROM using XW, the default
              value is disabled (-).
+
+  - XEL/XEU  Lock (XEL) / unlock (XEU) the file extension settings.
+             While the lock is active, XEnum and XE+/XE- are silently
+             ignored, so software that tries to change the extension
+             mode behind your back cannot alter it (XET is not
+             affected). The lock state can be saved in the EEPROM using
+             XW. In the extended status (read the error channel after
+             sending an X command) the +/- indicator following the
+             extension mode is replaced by '<' while the lock is active.
+
+  - XET+/XET- Enable/disable strict file type checking. If enabled,
+             opening an existing file with an explicit file type (e.g.
+             "NAME,S") fails with 64,FILE TYPE MISMATCH if the actual
+             type of the file differs. This flag can be saved in the
+             EEPROM using XW, the default value is disabled (-).
 
   - XInum    Switches the display mode for mountables files (i.e. disk images
              and M2I). num can be 0, in which case the file will be shown
