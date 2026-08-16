@@ -1148,3 +1148,52 @@ An example configuration file named "config-example" is provided with
 the source code, as well as abridged files corresponding to the
 release binaries. If you want to compile sd2iec for a custom hardware
 you may have to edit config.h too to change the port definitions.
+
+petSD+ specific notes:
+======================
+The petSD+ (by Nils Eilers) is a dual-bus device: it connects to the
+IEEE-488 bus of PET/CBM machines as well as to the serial IEC bus of
+the C64/VIC-20/... family. Compared to classic sd2iec hardware there
+are a few peculiarities:
+
+- Bus selection and clock: The active bus (IEEE-488 or IEC) is chosen
+  in the onboard menu and stored in the EEPROM together with the rest
+  of the configuration. The MCU runs at 16 MHz while IEEE-488 is
+  active and at 8 MHz in IEC mode - the clock prescaler is switched at
+  runtime, which is why CONFIG_MCU_FREQ is set to 8000000 (so the IEC
+  fastloader timings are computed for the IEC clock). After an EEPROM
+  reset the default bus is IEEE-488.
+
+- IEC output stage: the IEC lines are driven through bus transceivers
+  and are NOT inverted (IEC_OUTPUTS_NONINVERTED): a set output port
+  bit means "line released/high", the opposite of classic AVR sd2iec
+  hardware. All fastloader send paths in fastloader-ll.S are therefore
+  polarity-guarded with #ifdef IEC_OUTPUTS_INVERTED; new fastloader
+  code must use the xsbi/xcbi macros or provide both variants,
+  otherwise it will work on classic hardware but drive the bus with
+  inverted levels on the petSD+.
+
+- Display, menu, buttons: the onboard LCD and the NEXT/PREV buttons
+  drive a menu system including a file browser. The button inputs
+  double as device-address jumpers (CONFIG_HW_ADDR_OR_BUTTONS).
+  petSD+ 2.x boards contain a second microcontroller acting as an I2C
+  slave that handles display contrast/brightness (PWM) and I/O such as
+  the IEEE-488 bus enable; its firmware lives in lcd-i2c-pwm-io/.
+
+- EEPROM failsafe: the EESAVE fuse preserves the EEPROM content across
+  firmware updates, so a configuration written by an older firmware
+  with a different layout may be loaded after flashing. Implausible
+  values are clamped automatically; holding PREV+NEXT during power-on
+  ignores the stored configuration entirely and boots with
+  compile-time defaults.
+
+- Building and flashing: build with
+      make CONFIG=configs/config-petSD+
+  (or configs/config-petSD+-loaders for a build with all supported
+  fastloaders enabled). If you set PRERELEASE, use capital letters -
+  lower-case letters show up as graphics characters in a C64 directory
+  because the machine boots in upper-case mode. The bootloader expects
+  the firmware as NODISKEMU.bin in the root directory of the SD card
+  and verifies the CRC that the build process stamps into the binary
+  (boot device id 0x2b445370); an image without a valid CRC is
+  rejected by the bootloader.

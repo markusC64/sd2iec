@@ -13,7 +13,6 @@ jobs:
     - name: Build dist
       id: build
       run: |
-      run: |
          sudo apt-get update
          sudo apt-get -y install avr-libc
          REV=$(git rev-parse --short HEAD | tr a-z A-Z)
