@@ -70,8 +70,8 @@ Supported commands:
 
 - Partition directory:
   The CMD-style partition directory ($=P) is supported, including filters
-  ($=P:S*). All partitions are listed with type "FAT", although this could
-  change to "NAT" later for compatibility.
+  ($=P:S*). All partitions are listed with type "NAT", except mounted images,
+  they are listed with their actual type.
 
 - A:
   Sets attributes on a file.
