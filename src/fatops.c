@@ -1356,8 +1356,7 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
 
-  /* Left arrow moves one directory up */
-  if (dent->name[0] == '_' && dent->name[1] == 0) {
+  if (dent == NULL) {
     FILINFO finfo;
 
     ops_scratch[0] = '.';
@@ -1370,9 +1369,10 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
       return 1;
     }
 
-    dent->pvt.fat.cluster = finfo.clust;
-    dent->typeflags = TYPE_DIR;
-  } else if (dent->name[0] == 0) {
+    path->dir.fat = finfo.clust;
+    return 0;
+  } 
+  if (dent->name[0] == 0) {
     /* Empty string moves to the root dir */
     path->dir.fat = 0;
     return 0;
@@ -1878,7 +1878,7 @@ uint8_t image_unmount(uint8_t part) {
  * themselves. Returns 0 if successful, 1 otherwise.
  */
 uint8_t image_chdir(path_t *path, cbmdirent_t *dent) {
-  if (dent->name[0] == '_' && dent->name[1] == 0) {
+  if (dent == NULL) {
     /* Unmount request */
     return image_unmount(path->part);
   }
