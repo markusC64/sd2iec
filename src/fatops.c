@@ -526,7 +526,7 @@ static bool is_valid_fat_name(const uint8_t *name) {
 static char fatfs_yAbuffer[45];
 
 static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
-  if (file_extension_mode == 5)
+  if (file_extension_mode == 5 && isRename != 2)
   {
      petscii_to_fat((const char*)name, fatfs_yAbuffer, 40);
      
@@ -552,8 +552,8 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
     return NULL;
 
   /* PC64 mode or invalid FAT name? */
-  if ( !isRename && ((file_extension_mode == 1 && type != TYPE_PRG) ||
-      file_extension_mode == 2 ||
+  if ( isRename != 1 && ((file_extension_mode == 1 && type != TYPE_PRG) ||
+      file_extension_mode == 2 || isRename == 2 ||
       !is_valid_fat_name(name))) {
 
       uint8_t *x00ext = NULL;
@@ -1903,6 +1903,8 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   partition[path->part].fatfs.curr_dir = path->dir.fat;
 
   if (dent->opstype == OPSTYPE_FAT_X00) {
+    uint8_t *x00ext = NULL;
+    FILINFO finfo;
     /* [PSUR]00 rename, just change the internal file name */
     p00cache_invalidate();
 
@@ -1934,6 +1936,27 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       parse_error(res,0);
       return;
     }
+
+    /* 2. Rename physical file */
+    ustrcpy(ops_scratch, newname);
+    x00ext = build_name(ops_scratch, dent->typeflags & TYPE_MASK, 2);
+
+    res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+    while (x00ext != NULL && res == FR_OK) {
+      /* File exists, increment extension */
+      *x00ext += 1;
+      if (*x00ext == '9'+1) {
+        *x00ext = '0';
+        *(x00ext-1) += 1;
+        if (*(x00ext-1) == '9'+1)
+          break;
+      }
+
+      res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+    }
+    
+    if (x00ext != NULL)
+       res = f_rename(&partition[path->part].fatfs, dent->pvt.fat.realname, ops_scratch);
   } else {
     switch (check_extension(dent->pvt.fat.realname, &ext)) {
     case EXT_IS_TYPE:
