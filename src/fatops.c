@@ -1561,7 +1561,8 @@ uint8_t fat_delete(path_t *path, cbmdirent_t *dent) {
 /**
  * fat_chdir - change directory in FAT and/or mount image
  * @path: path object for the location of dirname
- * @dent: Name of the directory/image to be changed into
+ * @dent: Name of the directory/image to be changed into,
+ *        NULL to move one directory up (left arrow)
  *
  * This function changes the directory of the path object to dirname.
  * If dirname specifies a file with a known extension (e.g. M2I or D64), the
@@ -1574,6 +1575,7 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
 
+  /* A NULL dirent (left arrow) moves one directory up */
   if (dent == NULL) {
     FILINFO finfo;
 
@@ -1589,7 +1591,8 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
 
     path->dir.fat = finfo.clust;
     return 0;
-  } 
+  }
+
   if (dent->name[0] == 0) {
     /* Empty string moves to the root dir */
     path->dir.fat = 0;
@@ -2095,10 +2098,10 @@ uint8_t image_unmount(uint8_t part) {
 /**
  * image_chdir - generic chdir for image files
  * @path: path object of the location of dirname
- * @dent: directory to be changed into
+ * @dent: directory to be changed into, NULL to leave the image
  *
- * This function will ignore any names except _ (left arrow)
- * and unmount the image if that is found. It can be used as
+ * This function will ignore any dirent except NULL (left arrow)
+ * and unmount the image in that case. It can be used as
  * chdir for all image types that don't support subdirectories
  * themselves. Returns 0 if successful, 1 otherwise.
  */

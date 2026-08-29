@@ -1811,7 +1811,8 @@ void d64_raw_directory(path_t *path, buffer_t *buf) {
 /**
  * d64_chdir - chdir for Dxx files
  * @path   : path object of the location of dirname
- * @dirname: directory to be changed into
+ * @dirname: directory to be changed into, NULL to move one directory
+ *           up (left arrow) - unmounts the image at the root
  *
  * Changes the directory in the path object for DNP files,
  * returns an error for everything else.
