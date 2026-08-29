@@ -1189,8 +1189,8 @@ are a few peculiarities:
 
 - Building and flashing: build with
       make CONFIG=configs/config-petSD+
-  (or configs/config-petSD+-loaders for a build with all supported
-  fastloaders enabled). If you set PRERELEASE, use capital letters -
+  All fastloaders supported by sd2iec are enabled in that
+  configuration. If you set PRERELEASE, use capital letters -
   lower-case letters show up as graphics characters in a C64 directory
   because the machine boots in upper-case mode. The bootloader expects
   the firmware as NODISKEMU.bin in the root directory of the SD card
