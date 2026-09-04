@@ -120,8 +120,10 @@ static uint8_t d64_opendir(dh_t *dh, path_t *path);
 static void format_d41_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_d71_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_d81_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
+#ifdef CONFIG_D80D82
 static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
+#endif
 static void format_dnp_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf);
 
 /* ------------------------------------------------------------------------- */
@@ -144,6 +146,7 @@ static const PROGMEM struct param_s dnpparam = {
   1, 1, 0, 0, DNP_LABEL_OFFSET, DNP_ID_OFFSET, 1, 1, 0, format_dnp_image
 };
 
+#ifdef CONFIG_D80D82
 static const PROGMEM struct param_s d80param = {
   39, 1, 77, 77, 6, 0x18, 5, 3, 533248, format_d80_image
 };
@@ -151,6 +154,7 @@ static const PROGMEM struct param_s d80param = {
 static const PROGMEM struct param_s d82param = {
   39, 1, 154, 154, 6, 0x18, 5, 3,  1066496, format_d82_image
 };
+#endif
 
 
 /**
@@ -201,7 +205,7 @@ static uint16_t sector_lba(uint8_t part, uint8_t track, const uint8_t sector) {
 
   case D64_TYPE_DNP:
     return track*256 + sector;
-
+#ifdef CONFIG_D80D82
   case D64_TYPE_D80:
   case D64_TYPE_D82:
     if (track >= 78) {
@@ -215,6 +219,7 @@ static uint16_t sector_lba(uint8_t part, uint8_t track, const uint8_t sector) {
     if (track < 64)
       return 39*29 + 14*27 + (track-53)*25 + sector + offset;
     return 39*29 + 14*27 + 11*25 + (track-64)*23 + sector + offset;
+#endif
   }
 }
 
@@ -260,6 +265,7 @@ uint16_t d64_sectors_per_track(uint8_t part, uint8_t track) {
   case D64_TYPE_DNP:
     return 256;
 
+#ifdef CONFIG_D80D82
   case D64_TYPE_D80:
   case D64_TYPE_D82:
     if (track > 77)
@@ -271,6 +277,7 @@ uint16_t d64_sectors_per_track(uint8_t part, uint8_t track) {
     if (track < 65)
        return 25;
     return 23;
+#endif
   }
 }
 
@@ -542,6 +549,7 @@ static uint8_t move_bam_window(uint8_t part, uint8_t track, bamdata_t type, uint
     pos = (track & 0x07) * 32;
     break;
 
+#ifdef CONFIG_D80D82
   case D64_TYPE_D80:
   case D64_TYPE_D82:
     t    = D80_BAM_TRACK;
@@ -552,6 +560,7 @@ static uint8_t move_bam_window(uint8_t part, uint8_t track, bamdata_t type, uint
     }
     pos = 1 + D80_BAM_BYTES_PER_TRACK * track + (type == BAM_BITFIELD ?  1:0);
     break;
+#endif
   }
 
   if (!bam_buffer_match(bam_buffer, part, t, s)) {
@@ -657,8 +666,10 @@ static uint16_t sectors_free(uint8_t part, uint8_t track) {
   case D64_TYPE_D71:
   case D64_TYPE_D81:
   case D64_TYPE_D41:
+#ifdef CONFIG_D80D82
   case D64_TYPE_D80:
   case D64_TYPE_D82:
+#endif
   default:
     if(move_bam_window(part,track,BAM_FREECOUNT,&trackmap))
       return 0;
@@ -1256,9 +1267,11 @@ static uint8_t errorcache_read(uint8_t part, uint8_t track) {
   switch (partition[part].imagetype & D64_TYPE_MASK) {
   case D64_TYPE_D41:
   case D64_TYPE_D71:
-  case D64_TYPE_D80:
   case D64_TYPE_D81:
+#ifdef CONFIG_D80D82
+  case D64_TYPE_D80:
   case D64_TYPE_D82:
+#endif
     if (image_read(part, pos, errorcache.errors, d64_sectors_per_track(part, track)) >= 2)
       return 1;
     break;
@@ -1342,6 +1355,7 @@ uint8_t d64_mount(path_t *path, uint8_t *name) {
     trk = 18; sec = 0;
     break;
 
+#ifdef CONFIG_D80D82
   case 533248:
     imagetype = D64_TYPE_D80;
     memcpy_P(&partition[part].d64data, &d80param, sizeof(struct param_s));
@@ -1365,6 +1379,7 @@ uint8_t d64_mount(path_t *path, uint8_t *name) {
     memcpy_P(&partition[part].d64data, &d82param, sizeof(struct param_s));
     trk = 38; sec = 0;
     break;
+#endif
 
   default:
     /* check for D41 image (with possibly more than 35 tracks) */
@@ -1589,11 +1604,13 @@ static uint16_t d64_freeblocks(uint8_t part) {
         continue; // continue the for loop
       break;      // break out of the switch
 
+#ifdef CONFIG_D80D82
     case D64_TYPE_D80:
     case D64_TYPE_D82:
       if (i == D80_DIR_TRACK)
         continue; // continue the for loop
       break;      // break out of the switch
+#endif
     }
 
     if ((partition[part].imagetype & D64_TYPE_MASK)
@@ -2340,6 +2357,23 @@ static void format_dnp_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
   clear_dir_sector(part, 1, DNP_ROOTDIR_SECTOR, buf->data);
 }
 
+#ifdef CONFIG_D80D82
+#ifdef CONFIG_NOFORMAT_D80D82
+static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
+   (void)part;
+   (void)buf;
+   (void)name;
+   (void)idbuf;
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
+   (void)part;
+   (void)buf;
+   (void)name;
+   (void)idbuf;
+   set_error(ERROR_SYNTAX_UNABLE);
+}
+#else
 static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t *idbuf) {
   allocate_sector(part, 39, 0);
   allocate_sector(part, 39, 1);
@@ -2443,7 +2477,9 @@ static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
     return;
 
   clear_dir_sector(part, 39, 1, buf->data);
-}  
+}
+#endif  
+#endif
 
 static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
   buffer_t *buf;
@@ -2491,9 +2527,11 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
       if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
           if (d64_format_track(part, buf, 53))
               return;
+#ifdef CONFIG_D80D82
       if (((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D80) || ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D82) )
           if (d64_format_track(part, buf, 38))
               return;
+#endif
 
        /* clear the entire directory track */
        /* This is not accurate, but I do not care. */
@@ -2561,12 +2599,14 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
         sector = 0;
         
      track = path->dir.dxx.track;
+#ifdef CONFIG_D80D82
      switch (partition[path->part].imagetype & D64_TYPE_MASK) {
        case D64_TYPE_D80:
        case D64_TYPE_D82:
           track = 38;
           break;
      }
+#endif
 
      if (image_read(path->part, sector_offset(path->part, track, sector), buffer->data, 256))
      {
@@ -2588,10 +2628,12 @@ static void d64_set_attrib(path_t *path, cbmdirent_t *dent, uint8_t attr)
           buffer->data[2] = attr ? 0x3E : 0x48;
           break;
 
+#ifdef CONFIG_D80D82
        case D64_TYPE_D80:
        case D64_TYPE_D82:
           buffer->data[2] = attr ? 0x3F : 0x43;
           break;
+#endif
      }
 
      partition[path->part].imagetype &= ~D64_IS_READLNLY;

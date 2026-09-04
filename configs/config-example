@@ -231,3 +231,4 @@ CONFIG_DISPLAY_BUFFER_SIZE=40
 # disable SD support
 # (the build system assumes that everything uses SD unless you enable this)
 #CONFIG_NO_SD=y
+CONFIG_D80D82=y
