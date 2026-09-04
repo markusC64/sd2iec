@@ -23,6 +23,7 @@
 
 */
 
+#include <stdbool.h>
 #include "config.h"
 #include "bitband.h"
 #include "fastloader.h" // for fl_track etc.
