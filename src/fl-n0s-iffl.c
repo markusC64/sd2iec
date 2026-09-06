@@ -62,7 +62,7 @@ bool scan_n0s_iffl(UNUSED_PARAMETER) {
   // Only d64 images supported, exit otherwise
   if (partition[current_part].fop != &d64ops) {
     set_error(ERROR_IMAGE_INVALID);
-    return false;
+    return true;
   }
 
   // Allocate 1 buffer for single sector reads
@@ -101,7 +101,6 @@ bool scan_n0s_iffl(UNUSED_PARAMETER) {
     sector_count++;
   }
   free_buffer(buf);
-  
   return true;
 }
 
@@ -209,5 +208,6 @@ bool load_n0s_iffl(UNUSED_PARAMETER) {
 
 end:
   free_buffer(buf);
+
   return true;
 }

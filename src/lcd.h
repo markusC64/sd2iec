@@ -1,3 +1,28 @@
+/* sd2iec - SD/MMC to Commodore serial bus interface/controller
+   Copyright (C) 2007-2021  Ingo Korb <ingo@akana.de>
+
+   Inspired by MMC2IEC by Lars Pontoppidan et al.
+
+   FAT filesystem access based on code from ChaN and Jim Brain, see ff.c|h.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License only.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+
+   lcd.c: Driver for LCD screen and LCD type autodetect
+
+*/
+
 #ifndef LCD_H
 #define LCD_H
 
@@ -57,8 +82,8 @@
  *  @name  Definitions for MCU Clock Frequency
  *  Adapt the MCU clock frequency in Hz to your target.
  */
-#define XTAL 8000000              /**< clock frequency in Hz, used to calculate delay timer */
-
+//#define XTAL 8000000              /**< clock frequency in Hz, used to calculate delay timer */
+#define XTAL = F_CPU /**< clock frequency in Hz from config file (by Polsi) */
 
 /**
  * @name  Definition for LCD controller type
@@ -79,6 +104,14 @@
 #define LCD_START_LINE4  0x54     /**< DDRAM address of first char of line 4 */
 #define LCD_WRAP_LINES      0     /**< 0: no wrap, 1: wrap at end of visibile line */
 
+//Arduino specific
+#define LCD_READ_REQUIRED		0		/* 1: R/W aktiv, 0: R/W nicht aktiv,
+ * alle Funktionen die "lcd_read" ben�tigen sind inaktiv */
+#if LCD_READ_REQUIRED == 0
+#define lcd_busy_time   1000    /* busy_time 5000�sec */
+#endif
+
+
 
 #define LCD_IO_MODE      1         /**< 0: memory mapped mode, 1: IO port mode */
 #if LCD_IO_MODE
@@ -97,11 +130,56 @@
  *
  */
 
-/*------------------------- Begin of changes by SBa ----------------------- */
-
 #include "config.h"
 
+/*------------------------- Begin of changes by Poldi ----------------------- */
+
+/* Example omly */
+#if CONFIG_HARDWARE_VARIANT==1
+/* ---------- Hardware configuration: Example ---------- */
+/* This is a commented example for most of the available options    */
+/* in case someone wants to build Yet Another[tm] hardware variant. */
+/* Some of the values are chosen randomly, so this variant is not   */
+/* expected to compile successfully.                                */
+
+
+/* For simplicity you can define LCD_PORT */
+#define LCD_PORT         PORTC        /**< port for the LCD lines   */
+
+/* Name      = LCD 
+  LCD_DATA0 = DB4 on LCD
+  LCD_DATA1 = DB5 on LCD
+  LCD_DATA2 = DB6 on LCD
+  LCD_DATA3 = DB7 on LCD
+*/
+
+#define LCD_DATA0_PORT   LCD_PORT     /**< port for 4bit data bit 0 */
+#define LCD_DATA1_PORT   LCD_PORT     /**< port for 4bit data bit 1 */
+#define LCD_DATA2_PORT   LCD_PORT     /**< port for 4bit data bit 2 */
+#define LCD_DATA3_PORT   LCD_PORT     /**< port for 4bit data bit 3 */
+#define LCD_DATA0_PIN    4            /**< pin for 4bit data bit 0  */
+#define LCD_DATA1_PIN    5            /**< pin for 4bit data bit 1  */
+#define LCD_DATA2_PIN    6            /**< pin for 4bit data bit 2  */
+#define LCD_DATA3_PIN    7            /**< pin for 4bit data bit 3  */
+
+/* RS, E and RW pins */
+#define LCD_RS_PORT      PORTB        /**< port for RS line         */
+#define LCD_RS_PIN       0            /**< pin  for RS line         */
+#define LCD_E_PORT       PORTB        /**< port for Enable line     */
+#define LCD_E_PIN        2            /**< pin  for Enable line     */
+
+/* Define this OMLY if the LCD RW oin is in use, pin is not tied to GND! */
+#define LCD_RW_PORT      PORTB        /**< port for RW line         */
+#define LCD_RW_PIN       1            /**< pin  for RW line         */
+
+/* Note: Look also CONFIG_HARDWARE_VARIANT==11 */
+
+#endif
+/*------------------------- End of example code ----------------------- */
+
+/*------------------------- Begin of changes by SBa ----------------------- */
 /* Lars Pontoppidan variant (larsp) */
+
 #if CONFIG_HARDWARE_VARIANT==3
 
 #define LCD_PORT         PORTC        /**< port for the LCD lines   */
@@ -166,6 +244,28 @@
 
 #endif
 
+/* Shadowolf 3 variant (sw3) */
+#if CONFIG_HARDWARE_VARIANT==12
+
+#define LCD_PORT         PORTD        /**< port for the LCD lines   */
+#define LCD_DATA0_PORT   LCD_PORT     /**< port for 4bit data bit 0 */
+#define LCD_DATA1_PORT   LCD_PORT     /**< port for 4bit data bit 1 */
+#define LCD_DATA2_PORT   LCD_PORT     /**< port for 4bit data bit 2 */
+#define LCD_DATA3_PORT   LCD_PORT     /**< port for 4bit data bit 3 */
+#define LCD_DATA0_PIN    0            /**< pin for 4bit data bit 0  */
+#define LCD_DATA1_PIN    1            /**< pin for 4bit data bit 1  */
+#define LCD_DATA2_PIN    3            /**< pin for 4bit data bit 2  */
+#define LCD_DATA3_PIN    4            /**< pin for 4bit data bit 3  */
+#define LCD_RS_PORT      PORTB        /**< port for RS line         */
+#define LCD_RS_PIN       0            /**< pin  for RS line         */
+#define LCD_RW_PORT      PORTB        /**< port for RW line         */
+#define LCD_RW_PIN       1            /**< pin  for RW line         */
+#define LCD_E_PORT       PORTB        /**< port for Enable line     */
+#define LCD_E_PIN        3            /**< pin  for Enable line     */
+
+
+#endif
+
 /*------------------------- End of changes by SBa ----------------------- */
 
 /* evo2 variant */
@@ -191,8 +291,41 @@
 
 #endif
 
+/*------------------------- Begin of changes by Poldi ----------------------- */
+
+/* Arduino Mega1280 or 2560 & LCD keypad shield */
+#if CONFIG_HARDWARE_VARIANT==11
+
+#define LCD_PORT         PORTH        /**< port for the LCD lines   */
+
+// LCD_DATA0 = DB4 on LCD
+// LCD_DATA1 = DB5 on LCD
+// LCD_DATA2 = DB6 on LCD
+// LCD_DATA3 = DB7 on LCD
+
+#define LCD_DATA0_PORT   PORTG        /**< port for 4bit data bit 0 */
+#define LCD_DATA0_PIN    5            /**< pin for 4bit data bit 0  */
+#define LCD_DATA1_PORT   PORTE        /**< port for 4bit data bit 1 */
+#define LCD_DATA1_PIN    3            /**< pin for 4bit data bit 1  */
+#define LCD_DATA2_PORT   PORTH        /**< port for 4bit data bit 2 */
+#define LCD_DATA2_PIN    3            /**< pin for 4bit data bit 2  */
+#define LCD_DATA3_PORT   PORTH        /**< port for 4bit data bit 3 */
+#define LCD_DATA3_PIN    4            /**< pin for 4bit data bit 3  */
+
+#define LCD_RS_PORT      PORTH        /**< port for RS line         */
+#define LCD_RS_PIN       5            /**< pin  for RS line         */
+#define LCD_E_PORT       PORTH        /**< port for Enable line     */
+#define LCD_E_PIN        6            /**< pin  for Enable line     */
+// Arduino specific
+// Define backlight pin B4 for detection if there is LCD keypad shield
+#define OPTIONPORT     PORTB       ///<
+#define OPTIONDDR      DDRB        ///<
+#define OPTIONPIN      PINB        ///<
+#define OPTION_PORT    PORTB4      ///<   tie low with LCD keypad shield
 
 
+#endif
+/*------------------------- End of changes by Poldi ----------------------- */
 #elif defined(__AVR_AT90S4414__) || defined(__AVR_AT90S8515__) || defined(__AVR_ATmega64__) || \
       defined(__AVR_ATmega8515__)|| defined(__AVR_ATmega103__) || defined(__AVR_ATmega128__) || \
       defined(__AVR_ATmega161__) || defined(__AVR_ATmega162__)
@@ -368,4 +501,6 @@ extern uint8_t lcd_controller_type(void);
 #define lcd_puts_P(__s)         lcd_puts_p(PSTR(__s))
 
 /*@}*/
+
+
 #endif //LCD_H
