@@ -29,7 +29,7 @@
 #include "timer.h"
 #include "fastloader-ll.h"
 
-
+#ifdef HAVE_PARALLEL //by Poldi
 uint8_t parallel_read(void) {
   return (PARALLEL_PGPIO->FIOPIN >> PARALLEL_PSTARTBIT) & 0xff;
 }
@@ -53,3 +53,4 @@ void parallel_send_handshake(void) {
   delay_us(2);
   PARALLEL_HGPIO->FIOSET = BV(PARALLEL_HSK_OUT_BIT);
 }
+#endif

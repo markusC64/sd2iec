@@ -22,7 +22,6 @@
    llfl-common.c: Common subroutines for low-level fastloader code
 
 */
-
 #include <stdbool.h>
 #include "config.h"
 #include "bitband.h"

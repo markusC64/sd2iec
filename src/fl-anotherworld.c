@@ -316,6 +316,6 @@ done:
   delay_ms(200);
   set_dirty_led(0);
   set_busy_led(0);
-  
-   return true;
+
+  return true;
 }
