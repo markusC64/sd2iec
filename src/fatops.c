@@ -126,10 +126,10 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
     bool escape = false;
     i = match ? 2 : 0;
     while(*pet) {
-        char p = *(pet++);
+        unsigned char p = *(unsigned char *)(pet++);
         if (p == 160) {
-           const char* q = pet;
-           while (*(q++) == 160);
+           const unsigned char* q = (unsigned char*) pet;
+           while (*q == 160) q++;
            if (!*q) 
               break;
         }
