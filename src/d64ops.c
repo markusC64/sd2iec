@@ -48,6 +48,10 @@
 #define D80_ERROR_OFFSET 533248
 #define D82_ERROR_OFFSET 1066496
 
+#ifdef CONFIG_LCD_DISPLAY
+#include "display_lcd.h"
+#endif
+
 #define D41_BAM_TRACK           18
 #define D41_BAM_SECTOR          0
 #define D41_BAM_BYTES_PER_TRACK 4
@@ -1631,6 +1635,10 @@ static uint16_t d64_freeblocks(uint8_t part) {
 
 static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
   /* Read the directory entry of the file */
+#ifdef CONFIG_LCD_DISPLAY
+  DS_LOAD((char *) dent->name);
+#endif
+
   if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
     return;
 
@@ -1662,6 +1670,10 @@ static void d64_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
     d64_open_read(path, dent, buf);
     while (!current_error && buf->data[0])
       buf->refill(buf);
+
+#ifdef CONFIG_LCD_DISPLAY
+    DS_SAVE((char *) dent->name);
+#endif
 
     if (current_error)
       return;
