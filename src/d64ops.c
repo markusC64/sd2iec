@@ -2633,6 +2633,24 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    cleanup_and_free_buffer(buffer);
 }
 
+static void d64_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
+     uint8_t *ptr;
+     /* Read the directory entry of the file */
+     if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
+       return;
+
+     ptr = ops_scratch + DIR_OFS_FILE_TYPE;
+     *ptr = (*ptr & 0xE0) | newtype;
+
+     write_entry(path->part, &dent->pvt.dxx.dh, ops_scratch, 1);
+}
+
+static void d64_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
+  (void)path; (void)dent; (void)newname;
+  set_error(ERROR_SYNTAX_UNABLE);
+}
+
+
 
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
@@ -2656,5 +2674,7 @@ const PROGMEM fileops_t d64ops = {
   d64_chdir,
   d64_rename,
   d64_set_attrib,
-  d64_set_headername
+  d64_set_headername,
+  d64_change_type,
+  d64_convert
 };

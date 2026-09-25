@@ -428,6 +428,15 @@ static void eefs_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+static void eefs_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
+  (void)path; (void)dent; (void)newtype;
+  set_error(ERROR_SYNTAX_UNABLE);
+}
+
+static void eefs_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
+  (void)path; (void)dent; (void)newname;
+  set_error(ERROR_SYNTAX_UNABLE);
+}
 
 /* ------------------------------------------------------------------------- */
 /*  ops struct                                                               */
@@ -451,5 +460,8 @@ const PROGMEM fileops_t eefs_ops = {
   eefs_chdir,
   eefs_rename,
   eefs_set_attrib,
-  eefs_set_headername
+  eefs_set_headername,
+  eefs_change_type,
+  eefs_convert
+
 };

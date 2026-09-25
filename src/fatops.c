@@ -2400,6 +2400,51 @@ static void fat_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
+  uint8_t *x00ext;
+  FRESULT  res;
+  FILINFO  finfo;
+
+  partition[path->part].fatfs.curr_dir = path->dir.fat;
+  p00cache_invalidate();
+
+  ustrcpy(ops_scratch, dent->name);
+
+  if (dent->opstype == OPSTYPE_FAT_X00)
+  {
+    x00ext = build_name(ops_scratch, newtype, 2) - 1;
+
+    /* Find a free sequence number */
+    res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+    while (res == FR_OK) {
+      *x00ext += 1;
+      if (*x00ext == '9'+1) {
+        *x00ext = '0';
+        *(x00ext-1) += 1;
+        if (*(x00ext-1) == '9'+1) {
+          set_error(ERROR_FILE_EXISTS);
+          return;
+        }
+      }
+      res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+    }
+  }
+  else
+     x00ext = build_name(ops_scratch, newtype, 1);
+
+  set_dirty_led(1);
+  res = f_rename(&partition[path->part].fatfs, dent->pvt.fat.realname, ops_scratch);
+  update_leds();
+
+  if (res != FR_OK)
+    parse_error(res, 0);
+}
+
+static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
+  (void)path; (void)dent; (void)newname;
+  set_error(ERROR_SYNTAX_UNABLE);
+}
+
 const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consistent with d64ops and m2iops
   &fat_open_read,
   &fat_open_write,
@@ -2418,5 +2463,8 @@ const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consiste
   &fat_chdir,
   &fat_rename,
   &fat_set_attrib,
-  &fat_set_headername
+  &fat_set_headername,
+  &fat_change_type,
+  &fat_convert
+
 };
