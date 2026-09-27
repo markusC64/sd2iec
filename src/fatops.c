@@ -2216,9 +2216,195 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
     parse_error(res, 0);
 }
 
+static uint8_t fat_find_tempname(path_t *path, uint8_t *name) {
+  cbmdirent_t dummy;
+  uint16_t    num;
+
+  for (num = 1; num < 10000U; num++) {
+    ustrcpy_P(name, PSTR("TMP"));
+    /* append decimal number, max 6 digits fits the 80,<name>,0,0 message */
+    {
+      uint8_t  digits[6];
+      uint8_t  i = 0;
+      uint32_t v = num;
+      uint8_t *p = name + 3;
+
+      do {
+        digits[i++] = '0' + (v % 10);
+        v /= 10;
+      } while (v);
+      while (i)
+        *p++ = digits[--i];
+      *p = 0;
+    }
+
+    if (first_match(path, name, FLAG_HIDDEN, &dummy) != 0) {
+      /* not found -> name is free */
+      set_error(ERROR_OK);
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
 static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
-  (void)path; (void)dent; (void)newname;
-  set_error(ERROR_SYNTAX_UNABLE);
+  uint8_t tempname[CBM_NAME_LENGTH+1];
+  uint8_t needs_copy;
+  uint8_t *target;
+  FRESULT res;
+  FILINFO finfo;
+  uint8_t *x00ext = NULL;
+
+  if (newname == NULL) {
+    if (file_extension_mode == 1 || file_extension_mode == 2) {
+      set_error(ERROR_SYNTAX_UNABLE);
+      return;
+    }
+
+    /* ---- ec:foo -> TMP<n> ---- */
+    if (fat_find_tempname(path, tempname)) {
+      set_error(ERROR_FILE_EXISTS);
+      return;
+    }
+    target     = tempname;
+    /* x00 files must lose their header, so copy&delete */
+    needs_copy = (dent->opstype == OPSTYPE_FAT_X00);
+  } else {
+    if (dent->opstype == OPSTYPE_FAT_X00) {
+      set_error(ERROR_SYNTAX_UNABLE);
+      return;
+    }    
+    
+    /* ---- ec:foo=TMP<n> ---- */
+    target = newname;
+
+    /* Does the target representation require an x00 header?
+       build_name() tells us by returning a non-NULL x00 extension. */
+    ustrcpy(ops_scratch, newname);
+    x00ext = build_name(ops_scratch, dent->typeflags & TYPE_MASK, 0);
+    needs_copy = x00ext != NULL;
+  }
+
+  if (!needs_copy) {
+    /* Plain rename is sufficient */
+    fat_rename(path, dent, target);
+  } else {
+    FIL destination;
+    UINT read_count, write_count;
+    uint8_t copy_buffer[128];
+
+    partition[path->part].fatfs.curr_dir = path->dir.fat;
+    if (x00ext) {
+      res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+      while (res == FR_OK) {
+        *x00ext += 1;
+        if (*x00ext == '9'+1) {
+          *x00ext = '0';
+          *(x00ext-1) += 1;
+          if (*(x00ext-1) == '9'+1) {
+            set_error(ERROR_FILE_EXISTS);
+            return;
+          }
+        }
+        res = f_stat(&partition[path->part].fatfs, ops_scratch, &finfo);
+      }
+      if (res != FR_NO_FILE) {
+        parse_error(res, 0);
+        return;
+      }
+    } else {
+      /* Converting an x00 file to a plain FAT file. */
+      ustrcpy(ops_scratch, target);
+      build_name(ops_scratch, dent->typeflags & TYPE_MASK, 1);
+      if (!*ops_scratch) {
+        set_error_ts(ERROR_SYNTAX_JOKER, 0, 0);
+        return;
+      }
+    }
+
+    p00cache_invalidate();
+    set_dirty_led(1);
+    res = f_open(&partition[path->part].fatfs, &partition[path->part].imagehandle,
+                 dent->pvt.fat.realname, FA_READ | FA_OPEN_EXISTING);
+    if (res != FR_OK) goto copy_error;
+
+    res = f_open(&partition[path->part].fatfs, &destination,
+                 ops_scratch, FA_WRITE | FA_CREATE_NEW);
+    if (res != FR_OK) {
+      f_close(&partition[path->part].imagehandle);
+      goto copy_error;
+    }
+
+    if (x00ext) {
+      /* The x00 header contains the original Commodore name. */
+      memset(copy_buffer, 0, P00_HEADER_SIZE);
+      ustrcpy_P(copy_buffer, p00marker);
+      memcpy(copy_buffer + P00_CBMNAME_OFFSET, dent->name, CBM_NAME_LENGTH);
+      res = f_write(&destination, copy_buffer, P00_HEADER_SIZE, &write_count);
+      if (res == FR_OK && write_count != P00_HEADER_SIZE) res = FR_RW_ERROR;
+    } else {
+      if (partition[path->part].imagehandle.fsize < P00_HEADER_SIZE)
+        res = FR_RW_ERROR;
+      else
+        res = f_lseek(&partition[path->part].imagehandle, P00_HEADER_SIZE);
+    }
+
+    while (res == FR_OK) {
+      res = f_read(&partition[path->part].imagehandle, copy_buffer,
+                   sizeof(copy_buffer), &read_count);
+      if (res != FR_OK || read_count == 0) break;
+      res = f_write(&destination, copy_buffer, read_count, &write_count);
+      if (res == FR_OK && write_count != read_count) res = FR_RW_ERROR;
+    }
+
+    {
+      FRESULT close_res = f_close(&destination);
+      if (res == FR_OK) res = close_res;
+    }
+    {
+      FRESULT close_res = f_close(&partition[path->part].imagehandle);
+      if (res == FR_OK) res = close_res;
+    }
+    if (res != FR_OK) {
+      f_unlink(&partition[path->part].fatfs, ops_scratch);
+      goto copy_error;
+    }
+
+    res = f_unlink(&partition[path->part].fatfs, dent->pvt.fat.realname);
+    if (res != FR_OK) goto copy_error;
+    update_leds();
+    set_error(ERROR_OK);
+    goto copy_done;
+
+copy_error:
+    update_leds();
+    parse_error(res, 0);
+    return;
+  }
+
+copy_done:
+  if (current_error != 0 && current_error != ERROR_OK)
+    return;
+
+  if (newname == NULL) {
+    /* Report the generated name: 80,<name>,0,0 */
+    uint8_t *p = error_buffer;
+
+    set_error(ERROR_OK);
+    *p++ = '8';
+    *p++ = '0';
+    *p++ = ',';
+    ustrcpy(p, tempname);
+    while (*p) p++;
+    ustrcpy_P(p, PSTR(",0,0\r"));
+    error_buffer[CONFIG_ERROR_BUFFER_SIZE-1] = 0;
+    buffers[CONFIG_BUFFER_COUNT].data     = error_buffer;
+    buffers[CONFIG_BUFFER_COUNT].lastused = ustrlen(error_buffer)-1;
+    buffers[CONFIG_BUFFER_COUNT].position = 0;
+    current_error = 80;
+    set_error_led(0);
+  }
 }
 
 const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consistent with d64ops and m2iops
