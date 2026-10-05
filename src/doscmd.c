@@ -1008,6 +1008,7 @@ static void parse_copy(void) {
   int8_t res;
   buffer_t *srcbuf,*dstbuf;
   cbmdirent_t dent;
+  uint8_t err;
 
   clean_cmdbuffer();
 
@@ -1090,6 +1091,11 @@ static void parse_copy(void) {
         open_rel(&dstpath, &dent, dstbuf, srcbuf->recordlen, 1);
       else
         open_write(&dstpath, &dent, savedtype, dstbuf, 0);
+
+      /* No destination, nothing to copy to. The loop below could not end: */
+      /* the buffer has position 0, so tocopy (256 - position) is 0.       */
+      if (current_error != 0)
+        goto cleanup;
     }
 
     while (1) {
@@ -1141,9 +1147,15 @@ static void parse_copy(void) {
   }
 
   cleanup:
+  /* Closing a file reports "OK", which must not hide what went wrong */
+  err = current_error;
+
   /* Close the buffers */
   srcbuf->cleanup(srcbuf);
   cleanup_and_free_buffer(dstbuf);
+
+  if (err != 0 && current_error == 0)
+    set_error(err);
 }
 
 
