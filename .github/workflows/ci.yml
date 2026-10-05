@@ -2,7 +2,7 @@ name: CI
 on: 
    push:
       branches:
-         - devel
+         - devel64k
          - master
          - testing*
 
