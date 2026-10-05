@@ -338,7 +338,8 @@ uint8_t parse_path(uint8_t *in, path_t *path, uint8_t **name, uint8_t for_cd) {
         case '/':
           /* Double slash -> root */
           dent.name[0] = 0;
-          chdir(path, &dent);
+          if (chdir(path, &dent))
+            return 1;
           break;
 
         case 0:
@@ -383,7 +384,8 @@ uint8_t parse_path(uint8_t *in, path_t *path, uint8_t **name, uint8_t for_cd) {
           }
 
           /* Match found, move path */
-          chdir(path, &dent);
+          if (chdir(path, &dent))
+            return 1;
           *end = saved;
           in = end;
           break;
