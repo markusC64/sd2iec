@@ -31,6 +31,7 @@
 #include "eeprom-fs.h"
 #include "errormsg.h"
 #include "fatops.h"
+#include "fileops.h"
 #include "led.h"
 #include "parser.h"
 #include "ustring.h"
@@ -217,8 +218,17 @@ void eefsops_init(void) {
   eepromfs_init();
 }
 
-static void eefs_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
+static void eefs_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
   (void)path;
+
+#ifdef CONFIG_CVT
+  if (flags & OPENFLAG_CVT) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+#else
+  (void)flags;
+#endif
 
   eefs_error_t res;
 
@@ -242,7 +252,15 @@ static void eefs_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
 static void eefs_open_write(path_t *path, cbmdirent_t *dent, uint8_t type,
                             buffer_t *buf, uint8_t append) {
   (void)path;
+
+#ifdef CONFIG_CVT
+  if (type == TYPE_CVT) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+#else
   (void)type;
+#endif
 
   eefs_error_t res;
 

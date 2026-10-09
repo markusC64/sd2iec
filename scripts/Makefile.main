@@ -107,6 +107,10 @@ ifeq ($(CONFIG_P00CACHE),y)
   SRC += p00cache.c
 endif
 
+ifeq ($(CONFIG_CVT),y)
+  SRC += cvt.c
+endif
+
 ifeq ($(CONFIG_HAVE_EEPROMFS),y)
   SRC += eeprom-fs.c eefs-ops.c
 endif

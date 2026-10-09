@@ -37,6 +37,7 @@
 #include "doscmd.h"
 #include "errormsg.h"
 #include "ff.h"
+#include "cvt.h"
 #include "fileops.h"
 #include "flags.h"
 #include "led.h"
@@ -59,7 +60,11 @@
 static const PROGMEM char p00marker[] = "C64File";
 #define P00MARKER_LENGTH 7
 
-typedef enum { EXT_UNKNOWN, EXT_IS_X00, EXT_IS_TYPE } exttype_t;
+typedef enum { EXT_UNKNOWN, EXT_IS_X00, EXT_IS_TYPE
+#ifdef CONFIG_CVT
+             , EXT_IS_CVT
+#endif
+} exttype_t;
 
 uint8_t file_extension_mode;
 
@@ -334,6 +339,10 @@ static exttype_t check_extension(uint8_t *name, uint8_t **ext) {
              (f=='R' && s == 'E' && t == 'L') ||
              (f=='U' && s == 'S' && t == 'R'))
       return EXT_IS_TYPE;
+#ifdef CONFIG_CVT
+    else if (f == 'C' && s == 'V' && t == 'T' && *(*ext+3) == 0)
+      return EXT_IS_CVT;
+#endif
   }
   return EXT_UNKNOWN;
 }
@@ -538,6 +547,14 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
      *(name+3) = 0;
      return NULL;
   }
+#ifdef CONFIG_CVT
+  /* The name of the file does not matter for a CVT: If FAT can not hold  */
+  /* the name, it gets the form it has in xe5, {xx} for what does not fit. */
+  /* Convert it now, pet2asc below can not be undone.                      */
+  if (type == TYPE_CVT)
+    petscii_to_fat((const char*)name, fatfs_yAbuffer, 40);
+#endif
+
   /* convert to PETSCII */
   pet2asc(name);
 
@@ -552,7 +569,11 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
     return NULL;
 
   /* PC64 mode or invalid FAT name? */
-  if ( isRename != 1 && ((file_extension_mode == 1 && type != TYPE_PRG) ||
+  if ( isRename != 1 &&
+#ifdef CONFIG_CVT
+       type != TYPE_CVT &&   /* a CVT is never an x00 file */
+#endif
+       ((file_extension_mode == 1 && type != TYPE_PRG) ||
       file_extension_mode == 2 || isRename == 2 ||
       !is_valid_fat_name(name))) {
 
@@ -609,8 +630,16 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
   
   if (!is_valid_fat_name(name))
   {
-     *name = 0;
-     return NULL;
+#ifdef CONFIG_CVT
+     if (type == TYPE_CVT) {
+        /* the xe5 name, it gets the .CVT below */
+        memcpy(name, fatfs_yAbuffer, 45);
+     } else
+#endif
+     {
+        *name = 0;
+        return NULL;
+     }
   }
 
   if (type == 0)
@@ -618,6 +647,9 @@ static uint8_t* build_name(uint8_t *name, uint8_t type, uint8_t isRename) {
 
   /* type-suffix mode? */
   if ((file_extension_mode == 3 && type != TYPE_PRG) ||
+#ifdef CONFIG_CVT
+      type == TYPE_CVT ||   /* a CVT is recognized by it, ET:name,V */
+#endif
       (file_extension_mode == 4)) {
     /* Append type suffix to the file name */
     while (*name) name++;
@@ -880,24 +912,63 @@ static uint8_t fat_file_close(buffer_t *buf) {
 /*  Internal handlers for the various operations                             */
 /* ------------------------------------------------------------------------- */
 
+#ifdef CONFIG_CVT
+/* Raw read access for the CVT layer, no interpretation of the content */
+static uint8_t fat_peek(void *ctx, uint16_t offset, uint8_t *dst, uint8_t len) {
+  UINT bytesread;
+
+  if (f_lseek((FIL *)ctx, offset) != FR_OK)
+    return 1;
+  if (f_read((FIL *)ctx, dst, len, &bytesread) != FR_OK || bytesread != len)
+    return 1;
+
+  return 0;
+}
+
+/* Raw write access for the CVT layer, no interpretation of the content */
+static uint8_t fat_poke(void *ctx, uint16_t offset, const uint8_t *src, uint8_t len) {
+  UINT byteswritten;
+
+  if (f_lseek((FIL *)ctx, offset) != FR_OK)
+    return 1;
+  if (f_write((FIL *)ctx, src, len, &byteswritten) != FR_OK || byteswritten != len)
+    return 1;
+
+  return 0;
+}
+#endif
+
 /**
  * fat_open_read - opens a file for reading
  * @path: path of the file
  * @dent: pointer to cbmdirent with name of the file
  * @buf : buffer to be used
  *
+ * @flags: OPENFLAG_* mask
+ *
  * This functions opens a file in the FAT filesystem for reading and sets up
  * buf to access it.
+ *
+ * With OPENFLAG_CVT the data delivered is a CVT stream: A stored CVT is
+ * delivered as it is, for any other file the CVT layer builds a signature
+ * block that becomes the first block of the stream. Without the flag, a
+ * stored CVT delivers only its data, like a real drive would.
  */
-void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
+void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
   FRESULT res;
   uint8_t *name;
 
-  pet2asc(dent->name);
-  if (dent->pvt.fat.realname[0])
+#ifndef CONFIG_CVT
+  (void)flags;
+#endif
+
+  if (dent->pvt.fat.realname[0]) {
     name = dent->pvt.fat.realname;
-  else
+  } else {
+    /* only convert if the name is used, a CVT header needs the PETSCII name */
+    pet2asc(dent->name);
     name = dent->name;
+  }
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
   res = f_open(&partition[path->part].fatfs,&buf->pvt.fat.fh, name, FA_READ | FA_OPEN_EXISTING);
@@ -912,6 +983,19 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
     f_lseek(&buf->pvt.fat.fh, P00_HEADER_SIZE);
     buf->pvt.fat.headersize = P00_HEADER_SIZE;
   }
+#ifdef CONFIG_CVT
+  else if (dent->opstype == OPSTYPE_FAT_CVT && !(flags & OPENFLAG_CVT)) {
+    /* A stored CVT without the CVT flag: skip to the data */
+    uint16_t offset = cvt_data_offset(fat_peek, &buf->pvt.fat.fh);
+
+    if (offset == 0) {
+      f_close(&buf->pvt.fat.fh);
+      return;
+    }
+    f_lseek(&buf->pvt.fat.fh, offset);
+    buf->pvt.fat.headersize = offset;
+  }
+#endif
 
   buf->read      = 1;
   buf->cleanup   = fat_file_close;
@@ -919,6 +1003,34 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
   buf->seek      = fat_file_seek;
 
   stick_buffer(buf);
+
+#ifdef CONFIG_CVT
+  if ((flags & OPENFLAG_CVT) && dent->opstype != OPSTYPE_FAT_CVT) {
+    uint8_t recordlen = 0;
+
+    /* A REL file: its header ends with the record length, the records */
+    /* follow. That is the same for x00 files and for the others.      */
+    if ((dent->typeflags & TYPE_MASK) == TYPE_REL) {
+      UINT bytesread;
+
+      if (dent->opstype != OPSTYPE_FAT_X00)
+        buf->pvt.fat.headersize = 1;
+      f_lseek(&buf->pvt.fat.fh, buf->pvt.fat.headersize - 1);
+      f_read(&buf->pvt.fat.fh, &recordlen, 1, &bytesread);
+    }
+
+    /* Not a CVT: The first block of the stream is a signature block, the */
+    /* file follows with the normal refill. Offsets of the file no longer */
+    /* match the stream, so the seek callback is not usable.              */
+    cvt_make_header(dent, buf, recordlen);
+    buf->seek = NULL;
+
+    /* nothing follows the signature block of an empty file */
+    if (buf->pvt.fat.fh.fsize == buf->pvt.fat.headersize)
+      buf->sendeoi = 1;
+    return;
+  }
+#endif
 
   /* Call the refill once for the first block of data */
   buf->refill(buf);
@@ -1010,7 +1122,8 @@ FRESULT create_file(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf
  *
  * This function opens a file in the FAT filesystem for writing and sets up
  * buf to access it. type is ignored here because FAT has no equivalent of
- * file types.
+ * file types, except for TYPE_CVT: That file gets the extension .CVT. What
+ * is written is not checked, it is assumed to be a CVT.
  */
 void fat_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf, uint8_t append) {
   FRESULT res;
@@ -1039,6 +1152,12 @@ void fat_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf
   buf->refill    = fat_file_write;
   buf->seek      = fat_file_seek;
 
+#ifdef CONFIG_CVT
+  /* A CVT is written in one go, there is no position in it */
+  if (type == TYPE_CVT)
+    buf->seek = NULL;
+#endif
+
   /* If no data is written the file should end up with a single 0x0d byte */
   buf->data[2] = 13;
 }
@@ -1058,6 +1177,14 @@ void fat_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf
 void fat_open_rel(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t length, uint8_t mode) {
   FRESULT res;
   UINT bytesread;
+
+#ifdef CONFIG_CVT
+  /* A REL CVT is not a REL file, it can only be read with OPENFLAG_CVT */
+  if (dent->opstype == OPSTYPE_FAT_CVT) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return;
+  }
+#endif
 
   if(!mode) {
     res = create_file(path, dent, TYPE_REL, buf, length);
@@ -1378,6 +1505,9 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   FILINFO finfo;
   uint8_t *ptr,*nameptr;
   uint8_t typechar;
+#ifdef CONFIG_CVT
+  uint8_t cvt_candidate = 0;
+#endif
 
   finfo.lfn = ops_scratch;
 
@@ -1431,6 +1561,9 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   } else {
     /* Search for the file extension */
     exttype_t ext = check_extension(finfo.fname, &ptr);
+#ifdef CONFIG_CVT
+    cvt_candidate = (ext == EXT_IS_CVT);
+#endif
     if (ext == EXT_IS_X00) {
       /* [PSRU]00 file: display the internal CBM name from the file's header
          (dent->name was zeroed above). On any failure fall through and show it
@@ -1447,6 +1580,12 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
       uint8_t i = ustrlen(nameptr)-4;
       nameptr[i] = 0;
 
+#ifdef CONFIG_CVT
+    } else if (ext == EXT_IS_CVT && (globalflags & EXTENSION_HIDING)) {
+      /* Like the type extensions, a PRG until the content says otherwise */
+      typechar = 'P';
+      nameptr[ustrlen(nameptr)-4] = 0;
+#endif
     } else { /* ext == EXT_UNKNOWN or EXT_IS_TYPE but hiding disabled */
       /* Unknown extension: PRG */
       typechar = 'P';
@@ -1520,6 +1659,18 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   dent->date.hour   = finfo.ftime >> 11;
   dent->date.minute = (finfo.ftime >> 5) & 0x3f;
   dent->date.second = (finfo.ftime & 0x1f) << 1;
+
+#ifdef CONFIG_CVT
+  /* The extension only makes it a candidate, the CVT layer looks at the */
+  /* content. If it isn't a CVT the entry stays a normal PRG file.       */
+  if (cvt_candidate) {
+    partition_t *part = &partition[dh->part];
+
+    if (l_opencluster(&part->fatfs, &part->imagehandle, finfo.clust) == FR_OK &&
+        !cvt_probe(fat_peek, &part->imagehandle, dent))
+      dent->opstype = OPSTYPE_FAT_CVT;
+  }
+#endif
 
   return 0;
 }
@@ -1896,14 +2047,67 @@ void fat_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector
  * @newname: new file name
  *
  * This function renames the file in dent in the directory referenced by
- * path to newname.
+ * path to newname. For an x00 file that is the name inside the file, for a
+ * CVT it depends on what the directory shows: The name inside the CVT (the
+ * file is then renamed after it, as far as possible), or just the file with
+ * XEC+.
  */
+static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname);
+
 void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   uint8_t *ext;
   FRESULT res;
   UINT byteswritten;
 
   partition[path->part].fatfs.curr_dir = path->dir.fat;
+
+#ifdef CONFIG_CVT
+  if (dent->opstype == OPSTYPE_FAT_CVT) {
+    partition_t *part = &partition[path->part];
+    uint8_t fsnames = globalflags & CVT_FSNAME;
+    FILINFO finfo;
+
+    /* With the names inside (XEC-) the rename is done when the name inside   */
+    /* is changed. The file is only named after it so it can be told in the   */
+    /* other mode or on a PC. That comes second and may fail without making   */
+    /* the rename fail.                                                       */
+    if (!fsnames) {
+      res = f_open(&part->fatfs, &part->imagehandle, dent->pvt.fat.realname,
+                   FA_WRITE|FA_OPEN_EXISTING);
+      if (res == FR_OK) {
+        if (cvt_set_name(fat_poke, &part->imagehandle, newname))
+          res = FR_RW_ERROR;
+        if (f_close(&part->imagehandle) != FR_OK)
+          res = FR_RW_ERROR;
+      }
+      if (res != FR_OK) {
+        parse_error(res, 0);
+        return;
+      }
+    }
+
+    /* The file is named after the new name, with the extension that makes  */
+    /* it a CVT. If the FAT can't hold the name, that is an error only if   */
+    /* the name of the file is the name shown.                              */
+    ustrcpy(ops_scratch, newname);
+    build_name(ops_scratch, TYPE_CVT, 1);
+    if (!*ops_scratch) {
+      if (fsnames)
+        set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+      return;
+    }
+
+    /* It may have that name already (it differs in case only, or the name  */
+    /* inside was not the name of the file), then there is nothing to do.   */
+    res = f_stat(&part->fatfs, ops_scratch, &finfo);
+    if (res != FR_OK || finfo.clust != dent->pvt.fat.cluster) {
+      res = f_rename(&part->fatfs, dent->pvt.fat.realname, ops_scratch);
+      if (res != FR_OK && fsnames)
+        parse_error(res, 0);
+    }
+    return;
+  }
+#endif
 
   if (dent->opstype == OPSTYPE_FAT_X00) {
     uint8_t *x00ext = NULL;
@@ -1968,7 +2172,8 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       build_name(ops_scratch, dent->typeflags & TYPE_MASK, 1);
       if (!*ops_scratch)
       {
-         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+         /* Not a FAT name: only an x00 file can have it, convert makes one */
+         fat_convert(path, dent, newname);
          return;
       }
       
@@ -1982,7 +2187,8 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       build_name(ops_scratch, 0, 1);
       if (!*ops_scratch)
       {
-         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+         /* Not a FAT name: only an x00 file can have it, convert makes one */
+         fat_convert(path, dent, newname);
          return;
       }
       
@@ -2405,6 +2611,46 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
   FRESULT  res;
   FILINFO  finfo;
 
+#ifdef CONFIG_CVT
+  /* EC:name,C/G: a stored CVT is already the form a GEOS file has on FAT */
+  if (newtype & CHTYPE_CONVERT) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+
+  /* The type inside the file: only a CVT has one, it is a byte of the     */
+  /* signature block. For all other files the flag means nothing.          */
+  if (newtype & CHTYPE_INNER) {
+    newtype &= (uint8_t)~CHTYPE_INNER;
+
+    if (dent->opstype == OPSTYPE_FAT_CVT && newtype != TYPE_CVT) {
+      partition_t *part = &partition[path->part];
+
+      part->fatfs.curr_dir = path->dir.fat;
+      res = f_open(&part->fatfs, &part->imagehandle, dent->pvt.fat.realname,
+                   FA_READ|FA_WRITE|FA_OPEN_EXISTING);
+      if (res == FR_OK) {
+        uint8_t err = cvt_set_type(fat_peek, fat_poke, &part->imagehandle, newtype);
+
+        if (err == 1)
+          res = FR_RW_ERROR;
+        if (f_close(&part->imagehandle) != FR_OK && err == 0)
+          res = FR_RW_ERROR;
+      }
+      if (res != FR_OK)
+        parse_error(res, 0);
+      return;
+    }
+  }
+
+  /* x00 files can not be CVTs, the header is in the way. build_name would */
+  /* make a .C00 of it.                                                    */
+  if (newtype == TYPE_CVT && dent->opstype == OPSTYPE_FAT_X00) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return;
+  }
+#endif
+
   partition[path->part].fatfs.curr_dir = path->dir.fat;
   p00cache_invalidate();
 
@@ -2506,6 +2752,13 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     /* Does the target representation require an x00 header?
        build_name() tells us by returning a non-NULL x00 extension. */
     ustrcpy(ops_scratch, newname);
+#ifdef CONFIG_CVT
+    /* A CVT is the same in every mode and never an x00 file, whatever type */
+    /* its entry has: the entry says if it is one.                          */
+    if (dent->opstype == OPSTYPE_FAT_CVT)
+      x00ext = build_name(ops_scratch, TYPE_CVT, 0);
+    else
+#endif
     x00ext = build_name(ops_scratch, dent->typeflags & TYPE_MASK, 0);
     needs_copy = x00ext != NULL;
   }
@@ -2564,7 +2817,7 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       /* The x00 header contains the original Commodore name. */
       memset(copy_buffer, 0, P00_HEADER_SIZE);
       ustrcpy_P(copy_buffer, p00marker);
-      memcpy(copy_buffer + P00_CBMNAME_OFFSET, dent->name, CBM_NAME_LENGTH);
+      ustrcpy(copy_buffer + P00_CBMNAME_OFFSET, newname);
       res = f_write(&destination, copy_buffer, P00_HEADER_SIZE, &write_count);
       if (res == FR_OK && write_count != P00_HEADER_SIZE) res = FR_RW_ERROR;
     } else {

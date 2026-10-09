@@ -38,6 +38,7 @@
 #include "wrapops.h"
 #include "d64ops.h"
 #include "flags.h"
+#include "cvt.h"
 
 #define D41_SIZE_MIN      D41_SIZE
 /* Max 7 additional tracks with 17 256 byte sectors each + 802 error bytes */
@@ -1181,7 +1182,14 @@ static uint8_t d64_write(buffer_t *buf) {
     return 0;
 }
 
-static uint8_t d64_write_cleanup(buffer_t *buf) {
+/**
+ * d64_write_finish - write the last sector and close the directory entry
+ * @buf: buffer of a file opened for writing
+ *
+ * The part of the cleanup that finishes the file, the buffer is not freed.
+ * Returns 0 on success, 1 on error.
+ */
+static uint8_t d64_write_finish(buffer_t *buf) {
   uint8_t t,s;
 
   buf->data[0] = 0;
@@ -1209,6 +1217,13 @@ static uint8_t d64_write_cleanup(buffer_t *buf) {
   update_timestamp(ops_scratch);
 
   if (write_entry(buf->pvt.d64.part, &buf->pvt.d64.dh, ops_scratch, 1))
+    return 1;
+
+  return 0;
+}
+
+static uint8_t d64_write_cleanup(buffer_t *buf) {
+  if (d64_write_finish(buf))
     return 1;
 
   buf->cleanup = callback_dummy;
@@ -1612,10 +1627,370 @@ static uint16_t d64_freeblocks(uint8_t part) {
   return blocks;
 }
 
-static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
+#ifdef CONFIG_CVT
+/* ------------------------------------------------------------------------- */
+/*  CVT stream of a file in an image                                         */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * With OPENFLAG_CVT a file is delivered as if it were stored as a CVT
+ * (see doc/CVT.TXT). Nothing is written, the stream is put together block
+ * by block from the image while it is read:
+ *
+ *   signature block  directory entry + signature, built by open
+ *   INFO block       the INFO sector, if the GEOS file has one
+ *   RECORD block     VLIR only: the RECORD sector, each T/S replaced by the
+ *                    sector count and last-sector index of its chain
+ *   RECORD high      VLIR only, GeoConvert98 V2: high bytes of the counts
+ *   data             SEQ: the chain; VLIR: all record chains in order, each
+ *                    one but the last padded with 0 to full 254 bytes
+ *
+ * All blocks are 254 bytes, so each one is exactly one buffer, and the data
+ * is read sector by sector like a normal file: data[0]/data[1] hold the next
+ * sector as usual. At the end of a record the next record is looked up in
+ * the RECORD sector and its first sector is put into data[0]/data[1], so the
+ * stream goes on as if it were one long chain.
+ *
+ * The RECORD block needs the length of every record before the data, and
+ * the signature needs to know if V2 is required (a record with more than
+ * 255 sectors). There is no RAM to keep the counts, so the chains are walked
+ * at open (V2 check, this also finds broken chains before anything is sent)
+ * and again for the RECORD block, a third time for the V2 high block. Only
+ * the link bytes are read for that.
+ *
+ * Files that are no GEOS files (incl. REL) get the same signature block as
+ * on FAT (cvt_make_header), followed by their data chain. The side sectors
+ * of a REL file are not part of the stream, the record length is in the
+ * entry.
+ */
+
+/* GEOS part of a D64 directory entry */
+#define DIR_OFS_GEOS_INFO_TRACK  0x15
+#define DIR_OFS_GEOS_INFO_SECTOR 0x16
+#define DIR_OFS_GEOS_STRUCT      0x17   /* REL: the record length */
+#define DIR_OFS_GEOS_TYPE        0x18
+
+/* pvt.d64cvt.state: which block comes next, plus flags */
+#define CVT_NEXT_INFO     0
+#define CVT_NEXT_RECLOW   1
+#define CVT_NEXT_RECHIGH  2
+#define CVT_NEXT_DATA     3
+#define CVT_NEXT_MASK     3
+#define CVT_FLAG_VLIR     (1<<6)
+#define CVT_FLAG_V2       (1<<7)
+
+/* in the signature block: the entry and the signature text */
+#define CVT_ENTRY_LENGTH  30            /* entry without the two link bytes */
+#define CVT_OFS_DATA_TS   0x01          /* data / RECORD block T/S          */
+#define CVT_OFS_INFO_TS   (DIR_OFS_GEOS_INFO_TRACK - 2)
+#define CVT_OFS_V2SIG     0x22          /* "PRG " + this + ".0"             */
+#define CVT_OFS_STRUCT    (DIR_OFS_GEOS_STRUCT - 2)
+
+static const PROGMEM char cvt_v2sig[] = "GeoConvert98-format V2";
+
+/**
+ * cvt_chain_length - count the sectors of a chain
+ * @part: partition
+ * @ts  : first sector of the chain, returns the link bytes of the last one
+ *
+ * Returns the number of sectors in the chain, ts[1] is then the
+ * last-sector index of the CVT (bytes used + 1, link byte of the last
+ * sector). Returns 0 if a sector can't be read (error channel is set).
+ */
+static uint16_t cvt_chain_length(uint8_t part, uint8_t *ts) {
+  uint16_t count = 0;
+
+  do {
+    if (checked_read(part, ts[0], ts[1], ts, 2, ERROR_ILLEGAL_TS_LINK))
+      return 0;
+    if (++count == 0) {
+      /* a chain longer than any image: it runs in a circle */
+      set_error(ERROR_ILLEGAL_TS_LINK);
+      return 0;
+    }
+  } while (ts[0]);
+
+  return count;
+}
+
+/**
+ * cvt_record_block - build the RECORD block of the CVT in buf
+ * @buf : buffer, pvt.d64cvt is set up
+ * @high: 0 for the normal (low) block, 1 for the V2 high block
+ *
+ * Reads the RECORD sector of the VLIR file and replaces every T/S in it by
+ * the sector count and last-sector index of the record (low block) or by
+ * the high byte of the count and 0 (high block). 00/FF (no record) is kept
+ * in the low block, everything from 00/00 (end) on becomes 0. The low block
+ * sets CVT_FLAG_V2 if a record has more than 255 sectors.
+ * Returns 0 on success, non-zero on error.
+ */
+static uint8_t cvt_record_block(buffer_t *buf, uint8_t high) {
+  uint8_t part = buf->pvt.d64cvt.part;
+  uint8_t *p, ts[2];
+  uint16_t count;
+
+  if (checked_read(part, buf->pvt.d64cvt.track, buf->pvt.d64cvt.sector,
+                   buf->data, 256, ERROR_ILLEGAL_TS_LINK))
+    return 1;
+
+  for (p = buf->data + 2; p < buf->data + 256; p += 2) {
+    if (!p[0]) {
+      if (!p[1]) {
+        /* 00/00: no more records */
+        memset(p, 0, buf->data + 256 - p);
+        break;
+      }
+      /* 00/FF: the record does not exist, the count is 0 */
+      if (high)
+        p[1] = 0;
+      continue;
+    }
+
+    ts[0] = p[0];
+    ts[1] = p[1];
+    count = cvt_chain_length(part, ts);
+    if (!count)
+      return 1;
+
+    if (high) {
+      p[0] = count >> 8;
+      p[1] = 0;
+    } else {
+      p[0] = count;
+      p[1] = ts[1];
+      if (count > 255)
+        buf->pvt.d64cvt.state |= CVT_FLAG_V2;
+    }
+  }
+
+  buf->position = 2;
+  buf->lastused = 255;
+  buf->sendeoi  = 0;
+  return 0;
+}
+
+/**
+ * cvt_next_record - find the next record of a VLIR file
+ * @buf: buffer, pvt.d64cvt is set up
+ *
+ * Looks for the next existing record in the RECORD sector, starting at
+ * entry pvt.d64cvt.record, and puts its first sector into data[0]/data[1].
+ * If there is none, data[0] is 0.
+ */
+static void cvt_next_record(buffer_t *buf) {
+  uint8_t part = buf->pvt.d64cvt.part;
+  uint8_t *ts = buf->data;
+
+  while (buf->pvt.d64cvt.record < 127) {
+    /* the RECORD sector was checked when it was read for the RECORD block */
+    if (image_read(part, sector_offset(part, buf->pvt.d64cvt.track, buf->pvt.d64cvt.sector) +
+                         2 + 2 * buf->pvt.d64cvt.record++, ts, 2))
+      break;
+    if (ts[0])
+      return;         /* found */
+    if (!ts[1])
+      break;          /* 00/00: no more records, 00/FF: skip */
+  }
+
+  ts[0] = 0;
+}
+
+/**
+ * d64_cvt_read - refill-callback for a file read as CVT stream
+ * @buf: target buffer
+ */
+static uint8_t d64_cvt_read(buffer_t *buf) {
+  uint8_t state = buf->pvt.d64cvt.state;
+  uint8_t next  = state & CVT_NEXT_MASK;
+
+  if (next == CVT_NEXT_RECLOW || next == CVT_NEXT_RECHIGH) {
+    if (cvt_record_block(buf, next == CVT_NEXT_RECHIGH))
+      goto fail;
+
+    if (next == CVT_NEXT_RECLOW && (state & CVT_FLAG_V2)) {
+      state = state - CVT_NEXT_RECLOW + CVT_NEXT_RECHIGH;
+    } else {
+      /* the data follows: the first record, if there is one */
+      state = (state & ~CVT_NEXT_MASK) | CVT_NEXT_DATA;
+      cvt_next_record(buf);
+      buf->sendeoi = !buf->data[0];
+    }
+
+  } else {
+    /* INFO block or data: one sector, data[0]/data[1] say which */
+    if (checked_read(buf->pvt.d64cvt.part, buf->data[0], buf->data[1],
+                     buf->data, 256, ERROR_ILLEGAL_TS_LINK))
+      goto fail;
+
+    buf->position = 2;
+    buf->lastused = 255;
+    buf->sendeoi  = 0;
+
+    if (next == CVT_NEXT_INFO) {
+      if (state & CVT_FLAG_VLIR) {
+        state = (state & ~CVT_NEXT_MASK) | CVT_NEXT_RECLOW;
+      } else {
+        /* sequential: the data chain follows (checked by open) */
+        state = (state & ~CVT_NEXT_MASK) | CVT_NEXT_DATA;
+        buf->data[0] = buf->pvt.d64cvt.track;
+        buf->data[1] = buf->pvt.d64cvt.sector;
+      }
+
+    } else if (buf->data[0] == 0) {
+      /* last sector of a chain */
+      uint8_t used = buf->data[1];
+
+      buf->lastused = used;
+      if (state & CVT_FLAG_VLIR) {
+        /* All records but the last are padded to full blocks. Whether */
+        /* this is the last one shows when looking for the next.       */
+        memset(buf->data + used + 1, 0, 255 - used);
+        cvt_next_record(buf);
+        if (buf->data[0])
+          buf->lastused = 255;
+      }
+      buf->sendeoi = !buf->data[0];
+    }
+  }
+
+  buf->pvt.d64cvt.state = state;
+  return 0;
+
+ fail:
+  free_buffer(buf);
+  return 1;
+}
+
+/**
+ * d64_open_cvt - set up buf to read a file as CVT stream
+ * @part: partition
+ * @dent: directory entry of the file
+ * @buf : buffer to be used
+ *
+ * The directory entry of the file must be in ops_scratch. Builds the
+ * signature block as first block of the stream, the rest is delivered by
+ * d64_cvt_read. All sectors needed for the header are checked here, so an
+ * error shows up at open, not in the middle of the stream.
+ */
+/* GEOS file: DEL..USR (REL and the others use the bytes differently), */
+/* structure SEQ or VLIR, and structure and GEOS type not both 0.      */
+static uint8_t cvt_is_geos(const uint8_t *e) {
+  uint8_t struc = e[DIR_OFS_GEOS_STRUCT];
+
+  return (e[DIR_OFS_FILE_TYPE] & TYPE_MASK) <= TYPE_USR && struc <= 1 &&
+         (struc | e[DIR_OFS_GEOS_TYPE]);
+}
+
+/**
+ * cvt_geos_signature - build the signature block of a GEOS file
+ * @dent: directory entry of the file
+ * @buf : buffer, the block is built in its data area
+ * @e   : raw directory entry of the file (32 bytes)
+ * @v2  : non-zero if the GeoConvert98 V2 signature is needed
+ *
+ * The signature text comes from the CVT layer, the entry is the raw one of
+ * the image. The T/S references mean nothing in a CVT, they only say
+ * whether there is an INFO block (addendum 2).
+ */
+static void cvt_geos_signature(cbmdirent_t *dent, buffer_t *buf, const uint8_t *e, uint8_t v2) {
+  uint8_t *p = buf->data + 2;
+  uint8_t info = e[DIR_OFS_GEOS_INFO_TRACK];
+
+  cvt_make_header(dent, buf, 0);
+  memcpy(p, e + 2, CVT_ENTRY_LENGTH);
+  p[CVT_OFS_DATA_TS]     = 0;
+  p[CVT_OFS_DATA_TS + 1] = 0;
+  p[CVT_OFS_INFO_TS]     = info ? 0x01 : 0;
+  p[CVT_OFS_INFO_TS + 1] = info ? 0xff : 0;
+  if (v2)
+    memcpy_P(p + CVT_OFS_V2SIG, cvt_v2sig, sizeof(cvt_v2sig) - 1);
+}
+
+static void d64_open_cvt(uint8_t part, cbmdirent_t *dent, buffer_t *buf) {
+  uint8_t *e = ops_scratch;
+  uint8_t type   = e[DIR_OFS_FILE_TYPE] & TYPE_MASK;
+  uint8_t struc  = e[DIR_OFS_GEOS_STRUCT];
+  uint8_t info_t = e[DIR_OFS_GEOS_INFO_TRACK];
+  uint8_t info_s = e[DIR_OFS_GEOS_INFO_SECTOR];
+  uint8_t state;
+  uint8_t ts[2];
+
+  buf->pvt.d64cvt.part   = part;
+  buf->pvt.d64cvt.record = 0;
+  buf->pvt.d64cvt.track  = e[DIR_OFS_TRACK];
+  buf->pvt.d64cvt.sector = e[DIR_OFS_SECTOR];
+
+  /* The first data sector (SEQ) or RECORD block (VLIR) must be readable, */
+  /* as the first sector of any file must be when it is opened.          */
+  if (checked_read(part, e[DIR_OFS_TRACK], e[DIR_OFS_SECTOR], ts, 2, ERROR_ILLEGAL_TS_LINK))
+    return;
+
+  if (!cvt_is_geos(e)) {
+    /* Not a GEOS file: same signature block as on FAT, the data follow. */
+    /* The record length of a REL file goes into the entry.              */
+    cvt_make_header(dent, buf, type == TYPE_REL ? struc : 0);
+    state = CVT_NEXT_DATA;
+
+  } else {
+    state = CVT_NEXT_DATA;
+    if (struc) {
+      /* VLIR: walk all records once, for V2 and to find broken chains */
+      state = CVT_FLAG_VLIR | CVT_NEXT_RECLOW;
+      buf->pvt.d64cvt.state = state;
+      if (cvt_record_block(buf, 0))
+        return;
+      state = buf->pvt.d64cvt.state;
+    }
+
+    if (info_t) {
+      if (checked_read(part, info_t, info_s, ts, 2, ERROR_ILLEGAL_TS_LINK))
+        return;
+      state = (state & ~CVT_NEXT_MASK) | CVT_NEXT_INFO;
+    }
+
+    cvt_geos_signature(dent, buf, e, state & CVT_FLAG_V2);
+  }
+
+  /* next sector to read: the INFO block or the data */
+  if ((state & CVT_NEXT_MASK) == CVT_NEXT_INFO) {
+    buf->data[0] = info_t;
+    buf->data[1] = info_s;
+  } else {
+    buf->data[0] = buf->pvt.d64cvt.track;
+    buf->data[1] = buf->pvt.d64cvt.sector;
+  }
+
+  buf->pvt.d64cvt.state = state;
+  buf->read   = 1;
+  buf->refill = d64_cvt_read;
+  buf->seek   = d64_seek;
+  stick_buffer(buf);
+}
+#endif /* CONFIG_CVT */
+
+/**
+ * d64_open_read - opens a file for reading
+ * @path : path of the file
+ * @dent : directory entry of the file
+ * @buf  : buffer to be used
+ * @flags: OPENFLAG_* mask
+ *
+ * With OPENFLAG_CVT the file is delivered as a CVT stream, see above.
+ */
+static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
   /* Read the directory entry of the file */
   if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
     return;
+
+#ifdef CONFIG_CVT
+  if (flags & OPENFLAG_CVT) {
+    d64_open_cvt(path->part, dent, buf);
+    return;
+  }
+#else
+  (void)flags;
+#endif
 
   buf->data[0] = ops_scratch[DIR_OFS_TRACK];
   buf->data[1] = ops_scratch[DIR_OFS_SECTOR];
@@ -1630,9 +2005,25 @@ static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
   buf->refill(buf);
 }
 
+#ifdef CONFIG_CVT
+static uint8_t d64_cvt_write_cleanup(buffer_t *buf);
+#endif
+
 static void d64_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_t *buf, uint8_t append) {
   dh_t dh;
   uint8_t *ptr;
+
+#ifdef CONFIG_CVT
+  uint8_t cvt = 0;
+
+  /* A CVT is written as a normal PRG file, the close turns it into the */
+  /* GEOS file (see d64_cvt_write_cleanup). Without a type, a file is a */
+  /* PRG, so that is the natural one if it can't be converted.          */
+  if (type == TYPE_CVT) {
+    type = TYPE_PRG;
+    cvt  = 1;
+  }
+#endif
 
   /* Check for read-only image file */
   if (!(partition[path->part].imagehandle.flag & FA_WRITE)) {
@@ -1642,7 +2033,7 @@ static void d64_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
 
   if (append) {
     /* Append case: Open the file and read the last sector */
-    d64_open_read(path, dent, buf);
+    d64_open_read(path, dent, buf, 0);
     while (!current_error && buf->data[0])
       buf->refill(buf);
 
@@ -1712,6 +2103,10 @@ static void d64_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
   buf->pvt.d64.part   = path->part;
   buf->pvt.d64.track  = t;
   buf->pvt.d64.sector = s;
+#ifdef CONFIG_CVT
+  if (cvt)
+    buf->cleanup      = d64_cvt_write_cleanup;
+#endif
 }
 
 static void d64_open_rel(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t length, uint8_t mode) {
@@ -2633,8 +3028,532 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    cleanup_and_free_buffer(buffer);
 }
 
+#ifdef CONFIG_CVT
+/* ------------------------------------------------------------------------- */
+/*  Converting a file between CVT and GEOS form in place                     */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Every block of a CVT is 254 bytes, i.e. exactly one sector. A CVT stored
+ * as a normal file has block n in the n-th sector of its chain, so the GEOS
+ * file is already there, only linked differently:
+ *
+ *   signature  -> becomes the directory entry, the sector is freed
+ *   INFO       -> INFO sector, link 00/FF
+ *   RECORD     -> RECORD sector: link 00/FF, count/index of each record
+ *                 replaced by the T/S of its first sector
+ *   RECORD high-> (V2) freed
+ *   data       -> the chain is cut at the record boundaries: the last
+ *                 sector of each record gets the link 00/index, its old
+ *                 link is the first sector of the next record
+ *
+ * GEOS -> CVT (EC:name,C) is the same backwards: one or two sectors are
+ * allocated, the records are linked into one chain (padding set to 0 as
+ * the specification says) and the RECORD sector gets counts and indexes.
+ * The stored CVT is a PRG file, the GEOS part of its entry is cleared.
+ *
+ * Both directions check everything first and change nothing if the input
+ * is not valid: Error 64, the file stays as it is. This is also what
+ * happens when a CVT written with ,V,W can't be converted at the close.
+ */
+
+#define CVT_BLOCK 254
+
+/* a real INFO block always starts like this (see cvt.c) */
+static const PROGMEM uint8_t cvt_info_start[] = { 0x03, 0x15, 0xbf };
+
+/* Write the link bytes of a sector */
+static uint8_t cvt_write_link(uint8_t part, uint8_t t, uint8_t s, const uint8_t *link) {
+  return image_write(part, sector_offset(part, t, s), (void *)link, 2, 0);
+}
+
+/* Peek callback for the CVT layer: the signature block, in a buffer */
+static uint8_t cvt_buffer_peek(void *ctx, uint16_t offset, uint8_t *dst, uint8_t len) {
+  if (offset + len > CVT_BLOCK)
+    return 1;
+  memcpy(dst, (uint8_t *)ctx + 2 + offset, len);
+  return 0;
+}
+
+/**
+ * cvt_split - take the data of a stored VLIR CVT apart into its records
+ * @part : partition
+ * @buf  : buffer with the RECORD block (low bytes) of the CVT
+ * @high : T/S of the V2 high block, track 0 for V1
+ * @ts   : first data sector, track 0 if there is none
+ * @write: 0 to check only, 1 to convert
+ *
+ * Walks the data chain record by record as the RECORD block says. With
+ * write, the last sector of each record but the last gets the link
+ * 00/index and the entries in buf become the T/S of the records. Sectors
+ * left after the last record make the CVT defective.
+ * Returns 0 on success, otherwise the error channel is set (64 if the CVT
+ * is defective).
+ */
+static uint8_t cvt_split(uint8_t part, buffer_t *buf, const uint8_t *high,
+                         const uint8_t *ts, uint8_t write) {
+  uint8_t *p, link[2];
+  uint8_t t = ts[0], s = ts[1];
+  uint8_t first_t, first_s, last_t, last_s;
+  uint16_t count;
+
+  for (p = buf->data + 2; p < buf->data + 256; p += 2) {
+    count = p[0];
+    if (high[0]) {
+      /* V2: the high byte of the count is in the high block */
+      if (image_read(part, sector_offset(part, high[0], high[1]) + (p - buf->data), link, 2))
+        return 1;
+      count += link[0] << 8;
+    }
+
+    if (!count) {
+      if (!p[1])
+        break;                   /* 00/00: no more records          */
+      if (p[1] == 0xff)
+        continue;                /* 00/FF: the record does not exist */
+      goto defective;
+    }
+
+    /* a record: its sectors must be there, the index valid */
+    if (p[1] < 2 || !t)
+      goto defective;
+
+    first_t = t;
+    first_s = s;
+    do {
+      last_t = t;
+      last_s = s;
+      if (checked_read(part, t, s, link, 2, ERROR_ILLEGAL_TS_LINK))
+        return 1;
+      t = link[0];
+      s = link[1];
+    } while (--count && t);
+
+    if (count)
+      goto defective;            /* the chain ends inside the record */
+
+    if (!t) {
+      /* end of the chain: this must be the last record, the bytes used */
+      /* in its last sector are those the RECORD block says             */
+      if (s != p[1])
+        goto defective;
+    } else if (write) {
+      link[0] = 0;
+      link[1] = p[1];
+      if (cvt_write_link(part, last_t, last_s, link))
+        return 1;
+    }
+
+    if (write) {
+      p[0] = first_t;
+      p[1] = first_s;
+    }
+  }
+
+  if (write)
+    memset(p, 0, buf->data + 256 - p);
+
+  /* sectors left after the last record */
+  if (t)
+    goto defective;
+
+  return 0;
+
+ defective:
+  set_error(ERROR_FILE_TYPE_MISMATCH);
+  return 1;
+}
+
+/**
+ * cvt_to_geos - convert a CVT stored as file into the GEOS file
+ * @part: partition
+ * @dh  : directory entry of the file
+ * @buf : work buffer
+ *
+ * The CVT is checked completely before anything is changed. The directory
+ * entry is restored from the signature block except the name, which is set
+ * with d64_rename at the end (that is the place for a check that the name
+ * does not exist yet). Returns 0 on success, otherwise the error channel is
+ * set (64: not a valid CVT, nothing changed).
+ */
+static uint8_t cvt_to_geos(uint8_t part, struct d64dh *dh, buffer_t *buf) {
+  uint8_t *p = buf->data + 2;
+  uint8_t sig[2], info[2], rec[2], high[2], data[2], hdr[5];
+  uint8_t struc, v2, freed;
+  uint16_t blocks;
+  cbmdirent_t dent;
+  path_t path;
+
+  /* the file itself: a GEOS file is not a CVT */
+  if (read_entry(part, dh, ops_scratch))
+    return 1;
+  if (cvt_is_geos(ops_scratch))
+    goto mismatch;
+
+  sig[0] = ops_scratch[DIR_OFS_TRACK];
+  sig[1] = ops_scratch[DIR_OFS_SECTOR];
+  blocks = ops_scratch[DIR_OFS_SIZE_LOW] | (ops_scratch[DIR_OFS_SIZE_HI] << 8);
+
+  /* the signature block; images can't hold REL files yet */
+  if (checked_read(part, sig[0], sig[1], buf->data, 256, ERROR_ILLEGAL_TS_LINK))
+    return 1;
+  if (cvt_probe(cvt_buffer_peek, buf->data, &dent) ||
+      (p[0] & TYPE_MASK) == TYPE_REL)
+    goto mismatch;
+
+  /* buf->data is laid out like a directory entry: the signature block */
+  /* has the entry without its first two bytes                         */
+  struc = cvt_is_geos(buf->data) ? p[CVT_OFS_STRUCT] : 0;
+  v2 = !memcmp_P(p + CVT_OFS_V2SIG, cvt_v2sig, sizeof(cvt_v2sig) - 1);
+
+  /* the sector after the signature block */
+  data[0] = buf->data[0];
+  data[1] = buf->data[1];
+  info[0] = info[1] = 0;
+  high[0] = high[1] = 0;
+  if (!data[0])
+    goto mismatch;               /* nothing but a signature block */
+
+  if (cvt_is_geos(buf->data)) {
+    /* The entry says if there is an INFO block. Older writers left the */
+    /* track 0 although there was one, it is recognized by its start.   */
+    uint8_t has_info = p[CVT_OFS_INFO_TS];
+
+    if (checked_read(part, data[0], data[1], hdr, sizeof(hdr), ERROR_ILLEGAL_TS_LINK))
+      return 1;
+    if (has_info || !memcmp_P(hdr + 2, cvt_info_start, sizeof(cvt_info_start))) {
+      info[0] = data[0];
+      info[1] = data[1];
+      data[0] = hdr[0];
+      data[1] = hdr[1];
+      if (!data[0])
+        goto mismatch;
+    }
+  }
+
+  if (struc) {
+    /* VLIR: RECORD block, V2 high block, then the data */
+    rec[0] = data[0];
+    rec[1] = data[1];
+    if (checked_read(part, rec[0], rec[1], buf->data, 256, ERROR_ILLEGAL_TS_LINK))
+      return 1;
+    data[0] = buf->data[0];
+    data[1] = buf->data[1];
+
+    if (v2) {
+      if (!data[0])
+        goto mismatch;
+      high[0] = data[0];
+      high[1] = data[1];
+      if (checked_read(part, high[0], high[1], data, 2, ERROR_ILLEGAL_TS_LINK))
+        return 1;
+    }
+
+    /* check everything, then convert */
+    if (cvt_split(part, buf, high, data, 0) ||
+        cvt_split(part, buf, high, data, 1))
+      return 1;
+
+    /* RECORD sector of the GEOS file */
+    buf->data[0] = 0;
+    buf->data[1] = 0xff;
+    if (image_write(part, sector_offset(part, rec[0], rec[1]), buf->data, 256, 0))
+      return 1;
+
+    data[0] = rec[0];
+    data[1] = rec[1];
+  }
+
+  if (info[0]) {
+    hdr[0] = 0;
+    hdr[1] = 0xff;
+    if (cvt_write_link(part, info[0], info[1], hdr))
+      return 1;
+  }
+
+  /* The entry from the signature block: type with flags, INFO T/S,  */
+  /* structure, GEOS type and date. Not the name and not the size.   */
+  if (checked_read(part, sig[0], sig[1], buf->data, 256, ERROR_ILLEGAL_TS_LINK) ||
+      read_entry(part, dh, ops_scratch))
+    return 1;
+
+  freed = high[0] ? 2 : 1;
+  blocks -= freed;
+
+  ops_scratch[DIR_OFS_FILE_TYPE] = p[0];
+  ops_scratch[DIR_OFS_TRACK]     = data[0];
+  ops_scratch[DIR_OFS_SECTOR]    = data[1];
+  memcpy(ops_scratch + DIR_OFS_GEOS_INFO_TRACK, p + CVT_OFS_INFO_TS,
+         DIR_OFS_SIZE_LOW - DIR_OFS_GEOS_INFO_TRACK);
+  ops_scratch[DIR_OFS_GEOS_INFO_TRACK]  = info[0];
+  ops_scratch[DIR_OFS_GEOS_INFO_SECTOR] = info[1];
+  ops_scratch[DIR_OFS_SIZE_LOW] = blocks & 0xff;
+  ops_scratch[DIR_OFS_SIZE_HI]  = blocks >> 8;
+  if (write_entry(part, dh, ops_scratch, 1))
+    return 1;
+
+  free_sector(part, sig[0], sig[1]);
+  if (high[0])
+    free_sector(part, high[0], high[1]);
+
+  /* The name from the signature block, 16 bytes with the $a0 padding.   */
+  /* TODO (beta): the rename must check that the name does not exist yet */
+  memmove(buf->data, p + CVT_NAME_OFFSET, CBM_NAME_LENGTH);
+  buf->data[CBM_NAME_LENGTH] = 0;
+  path.part = part;
+  dent.pvt.dxx.dh = *dh;
+  d64_rename(&path, &dent, buf->data);
+
+  return 0;
+
+ mismatch:
+  set_error(ERROR_FILE_TYPE_MISMATCH);
+  return 1;
+}
+
+/* Set the bytes after the last used one of a sector to 0 */
+static uint8_t cvt_zero_padding(uint8_t part, uint8_t t, uint8_t s, uint8_t used) {
+  uint16_t pos = used + 1;
+  uint8_t len;
+
+  memset(ops_scratch, 0, sizeof(ops_scratch));
+  while (pos < 256) {
+    len = 256 - pos > sizeof(ops_scratch) ? sizeof(ops_scratch) : 256 - pos;
+    if (image_write(part, sector_offset(part, t, s) + pos, ops_scratch, len, 0))
+      return 1;
+    pos += len;
+  }
+  return 0;
+}
+
+/**
+ * cvt_from_geos - convert a file into a CVT stored as PRG file
+ * @part: partition
+ * @dh  : directory entry of the file
+ * @dent: directory entry of the file (for the signature block)
+ * @buf : work buffer
+ *
+ * Any file can be converted, a file that is no GEOS file gets the same
+ * signature block as when it is read with ,V. Images can't hold REL files
+ * yet, so REL (and the other types) are refused with error 64.
+ * Returns 0 on success, otherwise the error channel is set.
+ */
+static uint8_t cvt_from_geos(uint8_t part, struct d64dh *dh, cbmdirent_t *dent, buffer_t *buf) {
+  uint8_t *e = ops_scratch;
+  uint8_t start[2], info[2], sig[2], high[2], first[2], cur[2], link[2];
+  uint8_t struc = 0, v2 = 0;
+  uint16_t blocks;
+
+  if (read_entry(part, dh, e))
+    return 1;
+  if ((e[DIR_OFS_FILE_TYPE] & TYPE_MASK) > TYPE_USR) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return 1;
+  }
+
+  start[0] = e[DIR_OFS_TRACK];
+  start[1] = e[DIR_OFS_SECTOR];
+  /* all of them, older gcc can't see that byte 1 is only used with byte 0 */
+  info[0]  = info[1]  = 0;
+  first[0] = first[1] = 0;
+  high[0]  = high[1]  = 0;
+
+  /* check everything first: the first sector must be there ... */
+  if (checked_read(part, start[0], start[1], link, 2, ERROR_ILLEGAL_TS_LINK))
+    return 1;
+
+  if (cvt_is_geos(e)) {
+    struc   = e[DIR_OFS_GEOS_STRUCT];
+    info[0] = e[DIR_OFS_GEOS_INFO_TRACK];
+    info[1] = e[DIR_OFS_GEOS_INFO_SECTOR];
+
+    /* ... the INFO block ... */
+    if (info[0] && checked_read(part, info[0], info[1], link, 2, ERROR_ILLEGAL_TS_LINK))
+      return 1;
+  }
+
+  buf->pvt.d64cvt.part   = part;
+  buf->pvt.d64cvt.track  = start[0];
+  buf->pvt.d64cvt.sector = start[1];
+  buf->pvt.d64cvt.state  = 0;
+
+  if (struc) {
+    /* ... and all records (this also finds out if V2 is needed) */
+    if (cvt_record_block(buf, 0))
+      return 1;
+    v2 = buf->pvt.d64cvt.state & CVT_FLAG_V2;
+
+    buf->pvt.d64cvt.record = 0;
+    cvt_next_record(buf);
+    first[0] = buf->data[0];
+    first[1] = buf->data[1];
+  }
+
+  /* the new sectors: signature block and V2 high block */
+  if (get_first_sector(part, &sig[0], &sig[1]) ||
+      allocate_sector(part, sig[0], sig[1]))
+    return 1;
+
+  if (v2) {
+    high[0] = sig[0];
+    high[1] = sig[1];
+    if (get_next_sector(part, &high[0], &high[1]) ||
+        allocate_sector(part, high[0], high[1])) {
+      free_sector(part, sig[0], sig[1]);
+      return 1;
+    }
+  }
+
+  if (struc) {
+    /* The counts must be taken before the records are linked, after that */
+    /* a chain runs into the next record. First the V2 high block ...     */
+    if (v2) {
+      if (cvt_record_block(buf, 1))
+        return 1;
+      buf->data[0] = first[0];
+      buf->data[1] = first[1];
+      if (image_write(part, sector_offset(part, high[0], high[1]), buf->data, 256, 0))
+        return 1;
+    }
+
+    /* ... then the RECORD block, it stays in buf while the records are */
+    /* linked: that only uses data[0]/data[1] (cvt_next_record).        */
+    if (cvt_record_block(buf, 0))
+      return 1;
+
+    buf->pvt.d64cvt.record = 0;
+    cvt_next_record(buf);
+    while (buf->data[0]) {
+      /* the last sector of this record */
+      cur[0] = buf->data[0];
+      cur[1] = buf->data[1];
+      do {
+        if (checked_read(part, cur[0], cur[1], link, 2, ERROR_ILLEGAL_TS_LINK))
+          return 1;
+        if (!link[0])
+          break;
+        cur[0] = link[0];
+        cur[1] = link[1];
+      } while (1);
+
+      /* link it to the next record, padded with 0 */
+      cvt_next_record(buf);
+      if (buf->data[0]) {
+        if (cvt_zero_padding(part, cur[0], cur[1], link[1]) ||
+            cvt_write_link(part, cur[0], cur[1], buf->data))
+          return 1;
+      }
+    }
+
+    /* RECORD block: on to the high block or the data, if there is any */
+    if (high[0]) {
+      buf->data[0] = high[0];
+      buf->data[1] = high[1];
+    } else if (first[0]) {
+      buf->data[0] = first[0];
+      buf->data[1] = first[1];
+    } else {
+      buf->data[1] = 0xff;      /* data[0] is 0: last block, full */
+    }
+    if (image_write(part, sector_offset(part, start[0], start[1]), buf->data, 256, 0))
+      return 1;
+  }
+
+  /* INFO block: on to the RECORD block or the data */
+  if (info[0] && cvt_write_link(part, info[0], info[1], start))
+    return 1;
+
+  /* signature block: on to the INFO block or what follows it */
+  if (read_entry(part, dh, e))
+    return 1;
+  if (cvt_is_geos(e))
+    cvt_geos_signature(dent, buf, e, v2);
+  else
+    cvt_make_header(dent, buf, 0);
+  if (info[0]) {
+    buf->data[0] = info[0];
+    buf->data[1] = info[1];
+  } else {
+    buf->data[0] = start[0];
+    buf->data[1] = start[1];
+  }
+  if (image_write(part, sector_offset(part, sig[0], sig[1]), buf->data, 256, 0))
+    return 1;
+
+  /* the entry: a PRG file, no GEOS file any more */
+  blocks = e[DIR_OFS_SIZE_LOW] + 256 * e[DIR_OFS_SIZE_HI] + (high[0] ? 2 : 1);
+  e[DIR_OFS_FILE_TYPE] = (e[DIR_OFS_FILE_TYPE] & 0xe0) | TYPE_PRG;
+  e[DIR_OFS_TRACK]     = sig[0];
+  e[DIR_OFS_SECTOR]    = sig[1];
+  memset(e + DIR_OFS_GEOS_INFO_TRACK, 0, DIR_OFS_GEOS_TYPE - DIR_OFS_GEOS_INFO_TRACK + 1);
+  e[DIR_OFS_SIZE_LOW]  = blocks & 0xff;
+  e[DIR_OFS_SIZE_HI]   = blocks >> 8;
+
+  return write_entry(part, dh, e, 1);
+}
+
+/**
+ * d64_cvt_write_cleanup - cleanup-callback of a file written with ,V
+ * @buf: buffer of the file
+ *
+ * The CVT has been written as a normal PRG file. When it is complete, it
+ * is converted into the GEOS file. If that is not possible, the PRG file
+ * stays as it is and the error channel says why.
+ */
+static uint8_t d64_cvt_write_cleanup(buffer_t *buf) {
+  struct d64dh dh = buf->pvt.d64.dh;
+  uint8_t part = buf->pvt.d64.part;
+
+  if (d64_write_finish(buf))
+    return 1;
+
+  cvt_to_geos(part, &dh, buf);
+
+  buf->cleanup = callback_dummy;
+  free_buffer(buf);
+
+  return 0;
+}
+#endif /* CONFIG_CVT */
+
 static void d64_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
      uint8_t *ptr;
+
+#ifdef CONFIG_CVT
+     /* EC:name,C/G: not a new type, the file is converted */
+     if (newtype & CHTYPE_CONVERT) {
+       buffer_t *buf;
+
+       if (!(partition[path->part].imagehandle.flag & FA_WRITE)) {
+         set_error(ERROR_WRITE_PROTECT);
+         return;
+       }
+
+       buf = alloc_system_buffer();
+       if (buf == NULL)
+         return;
+
+       if ((newtype & (uint8_t)~CHTYPE_CONVERT) == TYPE_CVT)
+         cvt_from_geos(path->part, &dent->pvt.dxx.dh, dent, buf);
+       else
+         cvt_to_geos(path->part, &dent->pvt.dxx.dh, buf);
+
+       free_buffer(buf);
+       return;
+     }
+#endif
+
+#ifdef CONFIG_CVT
+     /* There is no type inside a file here: the flag means the one type */
+     newtype &= (uint8_t)~CHTYPE_INNER;
+
+     /* TYPE_CVT (ET:name,V) is a FAT thing, the file name is what makes a CVT */
+     if (newtype == TYPE_CVT) {
+       set_error(ERROR_SYNTAX_UNABLE);
+       return;
+     }
+#endif
+
      /* Read the directory entry of the file */
      if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
        return;
