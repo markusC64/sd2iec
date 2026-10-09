@@ -111,9 +111,22 @@ typedef struct buffer_s {
     } dir;
     struct {
       FIL fh;              /* File access via FAT */
+#ifdef CONFIG_CVT
+      uint16_t headersize; /* offset to start of file data */
+#else
       uint8_t headersize;  /* offset to start of file data */
+#endif
     } fat;
     d64fh_t d64;           /* File access on D64  */
+#ifdef CONFIG_CVT
+    struct {
+      uint8_t part;        /* partition of the image */
+      uint8_t state;       /* next block of the stream and flags, see d64ops.c */
+      uint8_t record;      /* VLIR: next entry in the RECORD block to look at */
+      uint8_t track;       /* SEQ: first data sector, VLIR: RECORD block */
+      uint8_t sector;
+    } d64cvt;              /* D64 file read as a CVT stream */
+#endif
     eefs_fh_t eefh;        /* File handle for eepromfs */
     struct {
       uint8_t part;        /* partition number for $=P */

@@ -114,6 +114,9 @@ const PROGMEM uint8_t filetypes[] = {
   '8','1',' ', // 11
   '8','0',' ', // 12
   '8','2',' ', // 13
+#ifdef CONFIG_CVT
+  'C','V','T', // 14 = TYPE_CVT
+#endif
 };
 
 /* ------------------------------------------------------------------------- */
@@ -830,7 +833,7 @@ void file_open_previous(void) {
   buf->secondary = 0;
 
   display_filename_read(path.part, CBM_NAME_LENGTH, dent.name);
-  open_read(&path, &dent, buf);
+  open_read(&path, &dent, buf, 0);
 }
 
 /**
@@ -886,6 +889,7 @@ void file_open(uint8_t secondary) {
   uint8_t *ptr = command_buffer;
   enum open_modes mode = OPEN_READ;
   uint8_t filetype = TYPE_DEL;
+  uint8_t openflags = 0;
 
   /* check for a single * to load the previous file */
   if (secondary         == 0 &&
@@ -924,6 +928,12 @@ void file_open(uint8_t secondary) {
     case 'M': /* Modify */
       mode = OPEN_MODIFY;
       break;
+
+#ifdef CONFIG_CVT
+    case 'V': /* deliver the file as a GEOS CVT stream */
+      openflags |= OPENFLAG_CVT;
+      break;
+#endif
 
     case 'D': /* DEL */
       filetype = TYPE_DEL;
@@ -1003,7 +1013,11 @@ void file_open(uint8_t secondary) {
   }
 
   /* If match found is a REL... */
-  if(!res && (dent.typeflags & TYPE_MASK) == TYPE_REL) {
+  if(!res && (dent.typeflags & TYPE_MASK) == TYPE_REL
+#ifdef CONFIG_CVT
+     && !openflags      /* with V it is read like any other file, as a CVT */
+#endif
+    ) {
     /* requested type must be REL or DEL */
     if(filetype != TYPE_REL && filetype != TYPE_DEL) {
       set_error(ERROR_FILE_TYPE_MISMATCH);
@@ -1040,6 +1054,19 @@ void file_open(uint8_t secondary) {
     if (filetype == TYPE_DEL)
       filetype = TYPE_SEQ;
   }
+
+#ifdef CONFIG_CVT
+  /* A CVT is read, or written to a new file in one go. Appending would  */
+  /* break the structure and ",L" would create a REL file.                */
+  if (openflags) {
+    if (mode == OPEN_APPEND || filetype == TYPE_REL) {
+      set_error(ERROR_SYNTAX_UNABLE);
+      return;
+    }
+    if (mode == OPEN_WRITE)
+      filetype = TYPE_CVT;
+  }
+#endif
 
   if (mode == OPEN_WRITE) {
     if (res == 0) {
@@ -1124,7 +1151,7 @@ void file_open(uint8_t secondary) {
     /* Modify is the same as read, but allows reading *ed files.        */
     /* FAT doesn't have anything equivalent, so both are mapped to READ */
     display_filename_read(path.part,CBM_NAME_LENGTH,dent.name);
-    open_read(&path, &dent, buf);
+    open_read(&path, &dent, buf, openflags);
     break;
 
   case OPEN_WRITE:

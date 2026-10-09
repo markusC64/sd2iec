@@ -995,8 +995,23 @@ static void parse_copy(void) {
   int8_t res;
   buffer_t *srcbuf,*dstbuf;
   cbmdirent_t dent;
+  uint8_t openflags = 0;
+  uint8_t nameofs = 1;
+  uint8_t err;
 
   clean_cmdbuffer();
+
+#ifdef CONFIG_CVT
+  /* CCVT:new=old copies as a CVT. A real drive only looks at the first     */
+  /* letter of the command and takes it for a normal copy. The letters are  */
+  /* skipped, what follows is the path spec (partition, path, colon, name), */
+  /* which is not necessarily a colon right away: CCVT1/SUB/:new=old       */
+  if (command_buffer[1] == 'C' && command_buffer[2] == 'V' &&
+      command_buffer[3] == 'T') {
+    openflags = OPENFLAG_CVT;
+    nameofs = 4;
+  }
+#endif
 
   /* Find the = */
   srcname = ustrchr(command_buffer,'=');
@@ -1006,8 +1021,14 @@ static void parse_copy(void) {
   }
   *srcname++ = 0;
 
+  /* The streams of two CVTs can't be joined */
+  if (openflags && ustrchr(srcname, ',') != NULL) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+
   /* Parse the destination name */
-  if (parse_path(command_buffer+1, &dstpath, &dstname, 0))
+  if (parse_path(command_buffer+nameofs, &dstpath, &dstname, 0))
     return;
 
   if (ustrlen(dstname) == 0) {
@@ -1051,7 +1072,8 @@ static void parse_copy(void) {
       goto cleanup;
 
     /* Note: A 1541 can't copy REL files. We try to do better. */
-    if ((dent.typeflags & TYPE_MASK) == TYPE_REL) {
+    /* (A CVT stream has the REL file in it, no need for that.) */
+    if (!openflags && (dent.typeflags & TYPE_MASK) == TYPE_REL) {
       if (savedtype != 0 && savedtype != TYPE_REL) {
         set_error(ERROR_FILE_TYPE_MISMATCH);
         goto cleanup;
@@ -1062,7 +1084,7 @@ static void parse_copy(void) {
         set_error(ERROR_FILE_TYPE_MISMATCH);
         goto cleanup;
       }
-      open_read(&srcpath, &dent, srcbuf);
+      open_read(&srcpath, &dent, srcbuf, openflags);
     }
 
     if (current_error != 0)
@@ -1070,13 +1092,28 @@ static void parse_copy(void) {
 
     /* Open the destination file (first source only) */
     if (savedtype == 0) {
-      savedtype = dent.typeflags & TYPE_MASK;
+      savedtype = openflags ? TYPE_CVT : dent.typeflags & TYPE_MASK;
       memset(&dent, 0, sizeof(dent));
       ustrncpy(dent.name, dstname, CBM_NAME_LENGTH);
       if (savedtype == TYPE_REL)
         open_rel(&dstpath, &dent, dstbuf, srcbuf->recordlen, 1);
       else
         open_write(&dstpath, &dent, savedtype, dstbuf, 0);
+
+      /* No destination, nothing to copy to. The loop below could not end: */
+      /* the buffer has position 0, so tocopy (256 - position) is 0.       */
+      if (current_error != 0)
+        goto cleanup;
+
+#ifdef CONFIG_CVT
+      /* The first block of a CVT stream is the signature block. With the   */
+      /* names inside (XEC-) the copy gets its own name there; with XEC+    */
+      /* the names are the ones of the files and the stream stays as it is. */
+      if (openflags && !(globalflags & CVT_FSNAME)) {
+        memset(srcbuf->data + 2 + CVT_NAME_OFFSET, 0xa0, CBM_NAME_LENGTH);
+        memcpy(srcbuf->data + 2 + CVT_NAME_OFFSET, dent.name, ustrlen(dent.name));
+      }
+#endif
     }
 
     while (1) {
@@ -1128,9 +1165,15 @@ static void parse_copy(void) {
   }
 
   cleanup:
+  /* Closing a file reports "OK", which must not hide what went wrong */
+  err = current_error;
+
   /* Close the buffers */
   srcbuf->cleanup(srcbuf);
   cleanup_and_free_buffer(dstbuf);
+
+  if (err != 0 && current_error == 0)
+    set_error(err);
 }
 
 
@@ -1744,6 +1787,11 @@ static void parse_rename(void) {
 
   if (parse_path(oldname, &oldpath, &oldname, 0))
     return;
+
+  /* A new name has 16 characters at most, like on a real drive. Check the */
+  /* length first: Behind a short name there is the old name.              */
+  if (ustrlen(newname) > CBM_NAME_LENGTH)
+    newname[CBM_NAME_LENGTH] = 0;
 
   /* Rename can't move files across directories */
   if (memcmp(&oldpath.dir, &newpath.dir, sizeof(newpath.dir))) {
@@ -2423,6 +2471,16 @@ static void parse_xcommand(void) {
       } else if (*str == '-') {
         globalflags &= (uint8_t)~CHECK_TYPE;
       }
+#ifdef CONFIG_CVT
+    } else if (*str == 'C') {
+      /* XEC+: CVT files are listed with their file name, XEC-: with the name inside */
+      str++;
+      if (*str == '+') {
+        globalflags |= CVT_FSNAME;
+      } else if (*str == '-') {
+        globalflags &= (uint8_t)~CVT_FSNAME;
+      }
+#endif
     } else if (!lockXE) { 
       if (*str == '+') {
         globalflags |= EXTENSION_HIDING;
@@ -2626,6 +2684,9 @@ static void parse_changetype(void) {
   uint8_t *name, *typechar;
   cbmdirent_t dent;
   uint8_t  newtype;
+#ifdef CONFIG_CVT
+  uint8_t  inner;
+#endif
 
   clean_cmdbuffer();
 
@@ -2637,14 +2698,28 @@ static void parse_changetype(void) {
   }
   *typechar++ = 0;
 
+#ifdef CONFIG_CVT
+  /* A shifted letter (PETSCII $c1-$da, P is $d0) means the type inside the */
+  /* file, if it has one. The same letter unshifted is the type outside.    */
+  inner = *typechar & CHTYPE_INNER;
+  *typechar &= (uint8_t)~CHTYPE_INNER;
+#endif
+
   switch (*typechar) {
   case 'P': newtype = TYPE_PRG; break;
   case 'S': newtype = TYPE_SEQ; break;
   case 'U': newtype = TYPE_USR; break;
+#ifdef CONFIG_CVT
+  case 'V': newtype = TYPE_CVT; break;
+#endif
   default:
     set_error(ERROR_SYNTAX_UNKNOWN);
     return;
   }
+
+#ifdef CONFIG_CVT
+  newtype |= inner;
+#endif
 
   if (parse_path(command_buffer+2, &path, &name, 0))
     return;
@@ -2668,12 +2743,37 @@ static void parse_convert(void) {
   path_t   path;
  uint8_t *name, *srcname;
   cbmdirent_t dent;
+#ifdef CONFIG_CVT
+  uint8_t  geosconv = 0;
+  uint8_t *conv;
+#endif
 
   clean_cmdbuffer();
 
   /* EC:foo        -> convert to TMP<n> */
   /* EC:foo=TMP123 -> convert TMP123 back to foo */
   srcname = ustrchr(command_buffer, '=');
+
+#ifdef CONFIG_CVT
+  /* EC:foo,C -> convert the GEOS file foo into a CVT  */
+  /* EC:foo,G -> convert the CVT foo into the GEOS file */
+  /* That is done by the file system, as change_type.   */
+  conv = ustrrchr(command_buffer, ',');
+  if (conv != NULL) {
+    *conv++ = 0;
+    if (srcname != NULL || conv[1]) {
+      set_error(ERROR_SYNTAX_UNKNOWN);
+      return;
+    }
+    switch (*conv) {
+    case 'C': geosconv = CHTYPE_CONVERT | TYPE_CVT; break;
+    case 'G': geosconv = CHTYPE_CONVERT | TYPE_DEL; break;
+    default:
+      set_error(ERROR_SYNTAX_UNKNOWN);
+      return;
+    }
+  }
+#endif
   if (srcname == NULL) {
     /* Convert away: look up the file itself */
     if (parse_path(command_buffer+2, &path, &name, 0))
@@ -2688,6 +2788,12 @@ static void parse_convert(void) {
       return;
 
     set_error(ERROR_OK);
+#ifdef CONFIG_CVT
+    if (geosconv) {
+      change_type(&path, &dent, geosconv);
+      return;
+    }
+#endif
     convert_file(&path, &dent, NULL);
   } else {
     uint8_t *dstname;
@@ -2703,6 +2809,10 @@ static void parse_convert(void) {
       set_error(ERROR_SYNTAX_NONAME);
       return;
     }
+
+    /* A new name has 16 characters at most, like on a real drive */
+    if (ustrlen(dstname) > CBM_NAME_LENGTH)
+      dstname[CBM_NAME_LENGTH] = 0;
 
     /* Source (temporary) name */
     if (parse_path(srcname, &path, &name, 0))

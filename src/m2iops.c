@@ -184,7 +184,7 @@ static void open_existing(path_t *path, cbmdirent_t *dent, uint8_t type, buffer_
   if (appendflag)
     fat_open_write(path, dent, type, buf, 1);
   else
-    fat_open_read(path, dent, buf);
+    fat_open_read(path, dent, buf, 0);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -268,7 +268,16 @@ static uint8_t m2i_getdirlabel(path_t *path, uint8_t *label) {
   return image_read(path->part, 0, label, 16);
 }
 
-static void m2i_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf) {
+static void m2i_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
+#ifdef CONFIG_CVT
+  if (flags & OPENFLAG_CVT) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+#else
+  (void)flags;
+#endif
+
   open_existing(path, dent, TYPE_RAW, buf, 0);
 }
 
@@ -278,6 +287,13 @@ static void m2i_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
   uint8_t *nameptr;
   uint8_t i;
   FRESULT res;
+
+#ifdef CONFIG_CVT
+  if (type == TYPE_CVT) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return;
+  }
+#endif
 
   /* Check for read-only image file */
   if (!(partition[path->part].imagehandle.flag & FA_WRITE)) {

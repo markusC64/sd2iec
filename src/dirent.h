@@ -53,10 +53,24 @@
 /* Internal file type used to force files without header on FAT (for M2I) */
 #define TYPE_RAW 15
 
+/* Pseudo type for change_type (ET:name,V): the file is a GEOS CVT. It is */
+/* the index of "CVT" in filetypes[], a file never has this type.         */
+#define TYPE_CVT 14
+
+/* Flag in the newtype of change_type: the type inside the file is meant, if */
+/* it has one (a CVT). A file system without that ignores (masks) the flag.  */
+#define CHTYPE_INNER 0x80
+
+/* Flag in the newtype of change_type: not a new type, but convert the file  */
+/* (EC:name,C/G). With TYPE_CVT: GEOS file -> CVT, with TYPE_DEL: CVT ->     */
+/* GEOS file. A file system that can't do that sets error 31.                */
+#define CHTYPE_CONVERT 0x40
+
 /// Hidden is an unused bit on CBM
 #define FLAG_HIDDEN (1<<5)
 #define FLAG_RO     (1<<6)
 #define FLAG_SPLAT  (1<<7)
+
 
 /* forward declaration to avoid an include loop */
 struct buffer_s;
@@ -140,7 +154,8 @@ typedef enum {
                     /* and should match case-sensitive    */
   OPSTYPE_M2I,
   OPSTYPE_DXX,
-  OPSTYPE_EEFS
+  OPSTYPE_EEFS,
+  OPSTYPE_FAT_CVT   /* GEOS CVT file, can never be a disk image */
 } opstype_t;
 
 /**

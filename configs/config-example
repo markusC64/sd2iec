@@ -228,6 +228,15 @@ CONFIG_DISPLAY_BUFFER_SIZE=40
 # size of the [PSUR]00 name cache in bytes
 #CONFIG_P00CACHE_SIZE=32768
 
+# GEOS CVT container support
+# Files named *.CVT with a valid CVT signature are listed with the name, type
+# and size of the original GEOS file. Opening them normally delivers only the
+# data of a sequential GEOS file (VLIR is rejected), like a real drive would.
+# The open mode V (e.g. OPEN 2,8,2,"NAME,V") delivers the file as a CVT
+# stream. Files that are not CVTs get a CVT signature block in front.
+# Does not fit into an ATmega644P.
+#CONFIG_CVT=y
+
 # disable SD support
 # (the build system assumes that everything uses SD unless you enable this)
 #CONFIG_NO_SD=y

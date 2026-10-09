@@ -49,6 +49,12 @@ extern uint8_t globalflagsInt;
 #define EXTENSION_HIDING (1<<3)
 #define POSTMATCH        (1<<4)
 #define FASTFORMAT       (1<<6)
+/* The transient flags above are in globalflagsInt, a name space of their */
+/* own now. Older firmware kept them in this byte, so an EEPROM saved by  */
+/* it can have bit 2 or 5 set, and patches that add flags (LCD) may take  */
+/* bits too. Check them before using one. This flag is saved by XW.       */
+#define CVT_FSNAME       (1<<7) /* CVT files are listed with the name of the file */
+                                /* system, not with the name inside the CVT       */
 
 /* Disk image-as-directory mode, defined in fileops.c */
 extern uint8_t image_as_dir;
