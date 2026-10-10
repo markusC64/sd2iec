@@ -126,6 +126,11 @@ typedef struct buffer_s {
       uint8_t track;       /* SEQ: first data sector, VLIR: RECORD block */
       uint8_t sector;
     } d64cvt;              /* D64 file read as a CVT stream */
+    struct {
+      d64fh_t fh;          /* as for any D64 file, d64_read uses it */
+      uint8_t track;       /* RECORD block of the VLIR file */
+      uint8_t sector;
+    } d64rec;              /* D64 VLIR record selected with P on a ,V channel */
 #endif
     eefs_fh_t eefh;        /* File handle for eepromfs */
     struct {

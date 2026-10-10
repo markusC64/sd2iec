@@ -938,6 +938,81 @@ static uint8_t fat_poke(void *ctx, uint16_t offset, const uint8_t *src, uint8_t 
 }
 #endif
 
+#ifdef CONFIG_CVT
+/**
+ * fat_cvt_record_read - refill-callback for a VLIR record of a stored CVT
+ * @buf: target buffer
+ *
+ * Like fat_file_read, but stops at the end of the record. In this mode
+ * buf->fptr holds the number of bytes of the record not read yet (it is
+ * not needed for anything else here, and pvt.fat has no room for it
+ * without making every buffer bigger).
+ */
+static uint8_t fat_cvt_record_read(buffer_t *buf) {
+  UINT len, bytesread;
+
+  len = buf->fptr > 254 ? 254 : buf->fptr;
+  if (f_read(&buf->pvt.fat.fh, buf->data+2, len, &bytesread) != FR_OK) {
+    parse_error(FR_RW_ERROR, 1);
+    free_buffer(buf);
+    return 1;
+  }
+
+  /* the bus protocol can't handle 0 bytes (a truncated file) */
+  if (bytesread == 0) {
+    bytesread = 1;
+    buf->data[2] = 13;
+  }
+
+  buf->fptr    -= bytesread > buf->fptr ? buf->fptr : bytesread;
+  buf->position = 2;
+  buf->lastused = bytesread + 1;
+  buf->sendeoi  = (bytesread < len || buf->fptr == 0);
+  return 0;
+}
+
+/**
+ * fat_cvt_seek - seek-callback of a ,V channel on a stored CVT
+ * @buf  : buffer of the channel
+ * @pos  : offset from the P command
+ * @index: offset within the record
+ *
+ * A VLIR file has at most 127 records, so P with an offset below 128
+ * selects a record: From now on the channel delivers only its data, the
+ * last byte with EOI. From 128 on it is a position in the stored file as
+ * before (fat_file_seek), which also ends the record mode. Positions in the
+ * first 128 bytes are no loss: they are in the signature block.
+ * 64: the file is no VLIR CVT, 50: the record does not exist. After an
+ * error the channel delivers a single CR.
+ */
+static uint8_t fat_cvt_seek(buffer_t *buf, uint32_t pos, uint8_t index) {
+  uint32_t offset;
+
+  if (pos >= 128) {
+    buf->refill = fat_file_read;
+    return fat_file_seek(buf, pos, index);
+  }
+
+  if (cvt_record(fat_peek, &buf->pvt.fat.fh, pos, &offset, &buf->fptr)) {
+    buf->data[2]  = 13;
+    buf->position = 2;
+    buf->lastused = 2;
+    buf->sendeoi  = 1;
+    buf->read     = 1;
+    return 1;
+  }
+
+  if (f_lseek(&buf->pvt.fat.fh, offset) != FR_OK) {
+    parse_error(FR_RW_ERROR, 1);
+    return 1;
+  }
+
+  buf->refill = fat_cvt_record_read;
+  buf->read   = 1;
+  return fat_cvt_record_read(buf);
+}
+#endif
+
 /**
  * fat_open_read - opens a file for reading
  * @path: path of the file
@@ -960,6 +1035,14 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags
 
 #ifndef CONFIG_CVT
   (void)flags;
+#else
+  /* A record selected at the open: opened as with ,V, then positioned */
+  uint8_t record = RECSEL_NONE;
+
+  if (flags & OPENFLAG_RECORD) {
+    record = flags & OPENFLAG_RECNUM;
+    flags  = OPENFLAG_CVT;
+  }
 #endif
 
   if (dent->pvt.fat.realname[0]) {
@@ -1001,12 +1084,25 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags
   buf->cleanup   = fat_file_close;
   buf->refill    = fat_file_read;
   buf->seek      = fat_file_seek;
+#ifdef CONFIG_CVT
+  /* a stored CVT on a ,V channel: P can select a VLIR record */
+  if ((flags & OPENFLAG_CVT) && dent->opstype == OPSTYPE_FAT_CVT)
+    buf->seek    = fat_cvt_seek;
+#endif
 
   stick_buffer(buf);
 
 #ifdef CONFIG_CVT
   if ((flags & OPENFLAG_CVT) && dent->opstype != OPSTYPE_FAT_CVT) {
     uint8_t recordlen = 0;
+
+    /* only a stored CVT can have VLIR records */
+    if (record != RECSEL_NONE) {
+      set_error(ERROR_FILE_TYPE_MISMATCH);
+      f_close(&buf->pvt.fat.fh);
+      unstick_buffer(buf);
+      return;
+    }
 
     /* A REL file: its header ends with the record length, the records */
     /* follow. That is the same for x00 files and for the others.      */
@@ -1028,6 +1124,18 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags
     /* nothing follows the signature block of an empty file */
     if (buf->pvt.fat.fh.fsize == buf->pvt.fat.headersize)
       buf->sendeoi = 1;
+    return;
+  }
+#endif
+
+#ifdef CONFIG_CVT
+  /* the selected record instead of the first block; if that fails, */
+  /* so does the open (error 50/64 is set)                            */
+  if (record != RECSEL_NONE) {
+    if (fat_cvt_seek(buf, record, 0)) {
+      f_close(&buf->pvt.fat.fh);
+      unstick_buffer(buf);
+    }
     return;
   }
 #endif

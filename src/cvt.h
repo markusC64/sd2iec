@@ -104,6 +104,23 @@ uint8_t cvt_set_type(cvt_peek_t peek, cvt_poke_t poke, void *ctx, uint8_t type);
 uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx);
 
 /**
+ * cvt_record - find a record of a stored VLIR CVT
+ * @peek  : raw read access to the stored file
+ * @ctx   : handed through to peek
+ * @record: record number, 0..126
+ * @offset: returns the offset of the record in the stored file
+ * @length: returns the length of the record in bytes
+ *
+ * The position follows from the RECORD block (and the V2 high block): every
+ * record before it takes its sector count times 254 bytes. Returns 0 on
+ * success. Otherwise the error channel is set and non-zero returned: 64 if
+ * the file is no VLIR CVT, 50 if the record does not exist (00/FF, behind
+ * the end of the list or a number above 126).
+ */
+uint8_t cvt_record(cvt_peek_t peek, void *ctx, uint8_t record,
+                   uint32_t *offset, uint32_t *length);
+
+/**
  * cvt_make_header - make a file that is not a CVT look like one
  *
  * Builds the signature block for dent in the data area of buf (data[0]

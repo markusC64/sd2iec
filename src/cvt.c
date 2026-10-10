@@ -170,15 +170,9 @@ uint8_t cvt_set_type(cvt_peek_t peek, cvt_poke_t poke, void *ctx, uint8_t type) 
   return poke(ctx, CVT_OFS_TYPE, &b, 1);
 }
 
-uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx) {
-  uint8_t *e = get_entry(peek, ctx);
+/* Size of signature block and INFO block (if there is one), e is the entry */
+static uint16_t header_size(cvt_peek_t peek, void *ctx, uint8_t *e) {
   uint8_t info;
-
-  /* VLIR and REL are as unreadable as a file that is not a CVT */
-  if (e == NULL || e[CVT_OFS_STRUCT]) {
-    set_error(ERROR_FILE_TYPE_MISMATCH);
-    return 0;
-  }
 
   /* The entry says if there is an INFO block. Older writers left the track */
   /* 0 although there was one, it is recognized by how it starts.           */
@@ -189,6 +183,76 @@ uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx) {
 
   /* signature block, plus INFO block if there is one */
   return info ? 2 * CVT_BLOCK_SIZE : CVT_BLOCK_SIZE;
+}
+
+uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx) {
+  uint8_t *e = get_entry(peek, ctx);
+
+  /* VLIR and REL are as unreadable as a file that is not a CVT */
+  if (e == NULL || e[CVT_OFS_STRUCT]) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return 0;
+  }
+
+  return header_size(peek, ctx, e);
+}
+
+uint8_t cvt_record(cvt_peek_t peek, void *ctx, uint8_t record,
+                   uint32_t *offset, uint32_t *length) {
+  uint8_t *e = get_entry(peek, ctx);
+  uint8_t  v2, i, idx, entry[2];
+  uint16_t rec, count;
+  uint32_t ofs;
+
+  /* only a GEOS VLIR file: SEQ..USR (REL has the record length there) */
+  if (e == NULL || e[CVT_OFS_STRUCT] != 1 ||
+      (uint8_t)((e[CVT_OFS_TYPE] & TYPE_MASK) - TYPE_SEQ) > TYPE_USR - TYPE_SEQ) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return 1;
+  }
+
+  /* get_entry accepted one of both signatures, one byte tells them apart: */
+  /* "PRG formatted ..." or "PRG GeoConvert98-format V2.0"                 */
+  if (peek(ctx, CVT_SIG_OFFSET + SIG_TAIL_OFFSET + 1, entry, 1))
+    goto missing;
+  v2 = (entry[0] == 'G');
+
+  /* RECORD block, V2 high block, data */
+  rec = header_size(peek, ctx, e);
+  ofs = rec + (v2 ? 2 * CVT_BLOCK_SIZE : CVT_BLOCK_SIZE);
+
+  if (record >= CVT_BLOCK_SIZE / 2)
+    goto missing;
+
+  for (i = 0; ; i++) {
+    if (peek(ctx, rec + 2 * i, entry, 2))
+      goto missing;
+    count = entry[0];
+    idx   = entry[1];
+    if (v2) {
+      if (peek(ctx, rec + CVT_BLOCK_SIZE + 2 * i, entry, 1))
+        goto missing;
+      count |= entry[0] << 8;
+    }
+
+    if (!count && !idx)
+      goto missing;                       /* 00/00: no more records */
+    if (i == record)
+      break;
+    ofs += (uint32_t)count * CVT_BLOCK_SIZE;
+  }
+
+  /* 00/FF: the record does not exist, index < 2: no valid record */
+  if (!count || idx < 2)
+    goto missing;
+
+  *offset = ofs;
+  *length = (uint32_t)(count - 1) * CVT_BLOCK_SIZE + idx - 1;
+  return 0;
+
+ missing:
+  set_error(ERROR_RECORD_MISSING);
+  return 1;
 }
 
 void cvt_make_header(const cbmdirent_t *dent, buffer_t *buf, uint8_t recordlen) {

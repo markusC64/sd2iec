@@ -822,6 +822,21 @@ static void open_buffer(uint8_t secondary) {
  * This function reopens the last opened file in read mode.
  * The secondary address for this is always 0.
  */
+#ifdef CONFIG_CVT
+uint8_t record_select = RECSEL_NONE;
+
+/* Open flags for an open for reading: the selected record, if any. */
+/* It is used up by that.                                            */
+static uint8_t take_record_select(void) {
+  uint8_t flags = 0;
+
+  if (record_select != RECSEL_NONE)
+    flags = OPENFLAG_RECORD | record_select;
+  record_select = RECSEL_NONE;
+  return flags;
+}
+#endif
+
 void file_open_previous(void) {
   cbmdirent_t dent = previous_file_dirent;
   path_t      path = previous_file_path;
@@ -833,7 +848,11 @@ void file_open_previous(void) {
   buf->secondary = 0;
 
   display_filename_read(path.part, CBM_NAME_LENGTH, dent.name);
+#ifdef CONFIG_CVT
+  open_read(&path, &dent, buf, take_record_select());
+#else
   open_read(&path, &dent, buf, 0);
+#endif
 }
 
 /**
@@ -966,6 +985,21 @@ void file_open(uint8_t secondary) {
     load_directory(secondary);
     return;
   }
+
+#ifdef CONFIG_CVT
+  /* A record selected with P on channel 15 is for this open, if it reads */
+  /* (the directory above leaves it alone: it is listed before a copy).   */
+  /* Secondary 0 always reads, 1 always writes.                           */
+  if (secondary == 0 ||
+      (secondary != 1 && mode != OPEN_WRITE && mode != OPEN_APPEND)) {
+    uint8_t rec = take_record_select();
+    if (rec)
+      openflags = rec;
+  }
+#  ifdef RECSEL_CLEAR_ON_WRITE
+  record_select = RECSEL_NONE;
+#  endif
+#endif
 
   /* Parse path+partition numbers */
   uint8_t *fname;

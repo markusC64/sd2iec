@@ -1009,6 +1009,7 @@ static void parse_copy(void) {
   buffer_t *srcbuf,*dstbuf;
   cbmdirent_t dent;
   uint8_t openflags = 0;
+  uint8_t srcflags;
   uint8_t nameofs = 1;
   uint8_t err;
 
@@ -1024,6 +1025,16 @@ static void parse_copy(void) {
     openflags = OPENFLAG_CVT;
     nameofs = 4;
   }
+
+  /* A record selected with P on channel 15 is copied as a normal file: */
+  /* it goes to the first source only. CCVT copies whole files, there   */
+  /* the selection is dropped.                                          */
+  srcflags = openflags;
+  if (!openflags && record_select != RECSEL_NONE)
+    srcflags = OPENFLAG_RECORD | record_select;
+  record_select = RECSEL_NONE;
+#else
+  srcflags = 0;
 #endif
 
   /* Find the = */
@@ -1086,7 +1097,7 @@ static void parse_copy(void) {
 
     /* Note: A 1541 can't copy REL files. We try to do better. */
     /* (A CVT stream has the REL file in it, no need for that.) */
-    if (!openflags && (dent.typeflags & TYPE_MASK) == TYPE_REL) {
+    if (!srcflags && (dent.typeflags & TYPE_MASK) == TYPE_REL) {
       if (savedtype != 0 && savedtype != TYPE_REL) {
         set_error(ERROR_FILE_TYPE_MISMATCH);
         goto cleanup;
@@ -1097,7 +1108,8 @@ static void parse_copy(void) {
         set_error(ERROR_FILE_TYPE_MISMATCH);
         goto cleanup;
       }
-      open_read(&srcpath, &dent, srcbuf, openflags);
+      open_read(&srcpath, &dent, srcbuf, srcflags);
+      srcflags = openflags;      /* a selected record: first source only */
     }
 
     if (current_error != 0)
@@ -1723,8 +1735,27 @@ static void parse_new(void) {
 static void parse_position(void) {
   buffer_t *buf;
 
-  command_length = original_length;
+  /* The parameters are binary. The CR at the end is no parameter (the     */
+  /* command is sent with CR, as on CMD drives), so missing parameters are */
+  /* 0 after the cleanup. Unless the command would have no record/offset  */
+  /* without it: then it was a parameter ("P" ch 13 sent with ;).        */
+  if (command_length < 3)
+    command_length = original_length;
   clean_cmdbuffer();
+
+#ifdef CONFIG_CVT
+  /* P on the command channel: select a VLIR record for the next open     */
+  /* (or copy). The command channel itself has nothing to position in.    */
+  if (command_length >= 2 && (command_buffer[1] & 0x0f) == 15) {
+    record_select = command_buffer[2];
+    if (record_select >= 128 ||
+        command_buffer[3] || command_buffer[4] || command_buffer[5]) {
+      record_select = RECSEL_NONE;
+      set_error(ERROR_SYNTAX_UNABLE);
+    }
+    return;
+  }
+#endif
 
   if(command_length < 2 || (buf = find_buffer(command_buffer[1] & 0x0f)) == NULL) {
     set_error(ERROR_NO_CHANNEL);
@@ -2950,6 +2981,15 @@ void parse_doscommand(void) {
     set_error(ERROR_SYNTAX_UNABLE);
     return;
   }
+
+#ifdef CONFIG_CVT
+  /* A record selected with P on channel 15 is for the next open or copy, */
+  /* any other command drops it (CP and CD too, a copy C uses it).       */
+  if (!(command_buffer[0] == 'P' && (command_buffer[1] & 0x0f) == 15) &&
+      !(command_buffer[0] == 'C' && command_buffer[1] != 'P' &&
+        command_buffer[1] != 0xd0 && command_buffer[1] != 'D'))
+    record_select = RECSEL_NONE;
+#endif
 
   /* Send command to display */
   display_doscommand(command_length, command_buffer);

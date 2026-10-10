@@ -270,7 +270,7 @@ static uint8_t m2i_getdirlabel(path_t *path, uint8_t *label) {
 
 static void m2i_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
 #ifdef CONFIG_CVT
-  if (flags & OPENFLAG_CVT) {
+  if (flags) {                  /* ,V and VLIR records: not here */
     set_error(ERROR_SYNTAX_UNABLE);
     return;
   }

@@ -1664,6 +1664,8 @@ static uint16_t d64_freeblocks(uint8_t part) {
  * entry.
  */
 
+#define CVT_BLOCK         254           /* size of every block of a CVT */
+
 /* GEOS part of a D64 directory entry */
 #define DIR_OFS_GEOS_INFO_TRACK  0x15
 #define DIR_OFS_GEOS_INFO_SECTOR 0x16
@@ -1873,6 +1875,81 @@ static uint8_t d64_cvt_read(buffer_t *buf) {
  * d64_cvt_read. All sectors needed for the header are checked here, so an
  * error shows up at open, not in the middle of the stream.
  */
+/* The channel delivers nothing but a CR with EOI (after a failed P) */
+static void cvt_no_data(buffer_t *buf) {
+  buf->data[2]  = 13;
+  buf->position = 2;
+  buf->lastused = 2;
+  buf->sendeoi  = 1;
+  buf->read     = 1;
+}
+
+/**
+ * d64_cvt_seek - seek-callback of a ,V channel: select a VLIR record
+ * @buf  : buffer of the channel
+ * @pos  : offset from the P command
+ * @index: offset within the record (not used)
+ *
+ * A VLIR file has at most 127 records, so P with an offset below 128
+ * selects a record: From now on the channel delivers only its data, the
+ * last byte with EOI. Another P selects another record. Offsets from 128 on
+ * are positions in the file, which D64 files don't have (error 31).
+ * 64: the file is no VLIR file, 50: the record does not exist. After an
+ * error the channel delivers a single CR.
+ */
+static uint8_t d64_cvt_seek(buffer_t *buf, uint32_t pos, uint8_t index) {
+  uint8_t part, t, s, i;
+  uint8_t *p;
+
+  (void)index;
+
+  if (pos >= 128) {
+    set_error(ERROR_SYNTAX_UNABLE);
+    return 1;
+  }
+
+  if (buf->refill == d64_cvt_read) {
+    /* still the CVT stream: switch to records */
+    if (!(buf->pvt.d64cvt.state & CVT_FLAG_VLIR)) {
+      set_error(ERROR_FILE_TYPE_MISMATCH);
+      goto nodata;
+    }
+    part = buf->pvt.d64cvt.part;
+    t    = buf->pvt.d64cvt.track;
+    s    = buf->pvt.d64cvt.sector;
+    buf->pvt.d64rec.fh.part = part;
+    buf->pvt.d64rec.track   = t;
+    buf->pvt.d64rec.sector  = s;
+    buf->refill = d64_read;
+  }
+
+  part = buf->pvt.d64rec.fh.part;
+  if (checked_read(part, buf->pvt.d64rec.track, buf->pvt.d64rec.sector,
+                   buf->data, 256, ERROR_ILLEGAL_TS_LINK))
+    goto nodata;
+
+  /* the entries up to the wanted one, 00/00 ends the list */
+  if (pos < CVT_BLOCK / 2) {
+    for (i = 0, p = buf->data + 2; ; i++, p += 2) {
+      if (!p[0] && !p[1])
+        break;
+      if (i == pos) {
+        if (!p[0])
+          break;                  /* 00/FF: the record does not exist */
+        buf->data[0] = p[0];
+        buf->data[1] = p[1];
+        buf->read = 1;
+        return d64_read(buf);
+      }
+    }
+  }
+  set_error(ERROR_RECORD_MISSING);
+
+ nodata:
+  cvt_no_data(buf);
+  return 1;
+}
+
 /* GEOS file: DEL..USR (REL and the others use the bytes differently), */
 /* structure SEQ or VLIR, and structure and GEOS type not both 0.      */
 static uint8_t cvt_is_geos(const uint8_t *e) {
@@ -1964,7 +2041,7 @@ static void d64_open_cvt(uint8_t part, cbmdirent_t *dent, buffer_t *buf) {
   buf->pvt.d64cvt.state = state;
   buf->read   = 1;
   buf->refill = d64_cvt_read;
-  buf->seek   = d64_seek;
+  buf->seek   = d64_cvt_seek;
   stick_buffer(buf);
 }
 #endif /* CONFIG_CVT */
@@ -1984,8 +2061,14 @@ static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_
     return;
 
 #ifdef CONFIG_CVT
-  if (flags & OPENFLAG_CVT) {
+  if (flags) {
     d64_open_cvt(path->part, dent, buf);
+
+    /* A record selected at the open: as P on the channel. If that fails, */
+    /* so does the open (error 50/64 is set), the buffer is not kept.     */
+    if ((flags & OPENFLAG_RECORD) && buf->sticky &&
+        d64_cvt_seek(buf, flags & OPENFLAG_RECNUM, 0))
+      unstick_buffer(buf);
     return;
   }
 #else
@@ -3057,7 +3140,6 @@ static void d64_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
  * happens when a CVT written with ,V,W can't be converted at the close.
  */
 
-#define CVT_BLOCK 254
 
 /* a real INFO block always starts like this (see cvt.c) */
 static const PROGMEM uint8_t cvt_info_start[] = { 0x03, 0x15, 0xbf };

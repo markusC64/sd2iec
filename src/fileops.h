@@ -38,6 +38,23 @@ enum open_modes { OPEN_READ, OPEN_WRITE, OPEN_APPEND, OPEN_MODIFY };
 /* already, the signature block is added (see cvt.c).                */
 #define OPENFLAG_CVT (1<<0)
 
+/* With bit 7 the open flags select a VLIR record: bits 0-6 are its number, */
+/* the file is opened as with OPENFLAG_CVT and then positioned to the       */
+/* record as with P on the channel. Bit 0 is part of the number then.       */
+#define OPENFLAG_RECORD 0x80
+#define OPENFLAG_RECNUM 0x7f
+
+#ifdef CONFIG_CVT
+/* A record selected with P on channel 15 for the next open (or copy), */
+/* RECSEL_NONE if there is none                                        */
+#define RECSEL_NONE 0xff
+extern uint8_t record_select;
+
+/* An open for writing drops the selected record too. Without this, */
+/* only opens for reading (and commands) take it away.               */
+#define RECSEL_CLEAR_ON_WRITE
+#endif
+
 /* The first block of such a stream is the signature block (doc/CVT.TXT): the  */
 /* name of the file is in it, 16 characters from this offset, padded with $a0. */
 /* Every file system delivers it that way, so it may be changed on the way.    */
