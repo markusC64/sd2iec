@@ -222,7 +222,7 @@ static void eefs_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8
   (void)path;
 
 #ifdef CONFIG_CVT
-  if (flags & OPENFLAG_CVT) {
+  if (flags) {                  /* ,V and VLIR records: not here */
     set_error(ERROR_SYNTAX_UNABLE);
     return;
   }
