@@ -120,6 +120,23 @@ uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx);
 uint8_t cvt_record(cvt_peek_t peek, void *ctx, uint8_t record,
                    uint32_t *offset, uint32_t *length);
 
+#ifdef CONFIG_EINFO
+/* Result of cvt_info */
+#define CVTINFO_NONE 0xff     /* not a CVT */
+#define CVTINFO_VLIR (1<<0)   /* GEOS VLIR (else GEOS SEQ or no GEOS file) */
+#define CVTINFO_V2   (1<<1)   /* GeoConvert98 V2 signature */
+#define CVTINFO_INFO (1<<2)   /* there is an INFO block */
+#define CVTINFO_REL  (1<<3)   /* a REL file */
+
+/**
+ * cvt_info - what kind of CVT a stored file is (for E?)
+ *
+ * Returns CVTINFO_NONE if the file is not a CVT, otherwise a mask of
+ * CVTINFO_* flags.
+ */
+uint8_t cvt_info(cvt_peek_t peek, void *ctx);
+#endif
+
 /**
  * cvt_make_header - make a file that is not a CVT look like one
  *

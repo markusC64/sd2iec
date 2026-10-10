@@ -133,6 +133,29 @@ uint8_t match_name(uint8_t *matchstr, cbmdirent_t *dent, uint8_t ignorecase) {
    return match_name_str(matchstr, dent->name, ignorecase);
 }
 
+/**
+ * name_char - a character of a file name as it is compared
+ * @c         : the character
+ * @ignorecase: ignore the case
+ *
+ * With XP+ (PETSCII_CLASSES) the codes that show the same character on
+ * the C64 are the same: 192-223 are 96-127, 224-254 are 160-190 and 255
+ * is 126 (Commodore 64 manual). Then the case, if it is to be ignored.
+ */
+static uint8_t name_char(uint8_t c, uint8_t ignorecase) {
+  if (globalflags & PETSCII_CLASSES) {
+    if (c == 0xff)
+      c = 0x7e;
+    else if (c >= 0xe0)
+      c -= 0x40;
+    else if (c >= 0xc0)
+      c -= 0x60;
+  }
+  if (ignorecase)
+    c = tolower_pet(c);
+  return c;
+}
+
 uint8_t match_name_str(uint8_t *matchstr, uint8_t *filename, uint8_t ignorecase) {
   uint8_t *starpos;
   uint8_t m,f;
@@ -145,13 +168,8 @@ uint8_t match_name_str(uint8_t *matchstr, uint8_t *filename, uint8_t ignorecase)
 #endif
 
   while (chars_remain && *filename) {
-    if (ignorecase) {
-      m = tolower_pet(*matchstr);
-      f = tolower_pet(*filename);
-    } else {
-      m = *matchstr;
-      f = *filename;
-    }
+    m = name_char(*matchstr, ignorecase);
+    f = name_char(*filename, ignorecase);
     switch (m) {
     case '?':
       filename++;
@@ -165,13 +183,8 @@ uint8_t match_name_str(uint8_t *matchstr, uint8_t *filename, uint8_t ignorecase)
         matchstr += ustrlen(matchstr)-1;
         filename += ustrlen(filename)-1;
         while (matchstr != starpos) {
-          if (ignorecase) {
-            m = tolower_pet(*matchstr);
-            f = tolower_pet(*filename);
-          } else {
-            m = *matchstr;
-            f = *filename;
-          }
+          m = name_char(*matchstr, ignorecase);
+          f = name_char(*filename, ignorecase);
           if (m != f && m != '?')
             return 0;
           filename--;

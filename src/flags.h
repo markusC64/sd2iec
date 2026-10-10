@@ -55,6 +55,10 @@ extern uint8_t globalflagsInt;
 /* bits too. Check them before using one. This flag is saved by XW.       */
 #define CVT_FSNAME       (1<<7) /* CVT files are listed with the name of the file */
                                 /* system, not with the name inside the CVT       */
+#define PETSCII_CLASSES  (1<<5) /* XP+: file names are compared by PETSCII        */
+                                /* equivalence classes (192-223 = 96-127,         */
+                                /* 224-254 = 160-190, 255 = 126). Bit 5 was       */
+                                /* SWAPLIST_ASCII in old firmware, see above.     */
 
 /* Disk image-as-directory mode, defined in fileops.c */
 extern uint8_t image_as_dir;

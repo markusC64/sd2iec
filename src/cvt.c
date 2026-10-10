@@ -197,6 +197,31 @@ uint16_t cvt_data_offset(cvt_peek_t peek, void *ctx) {
   return header_size(peek, ctx, e);
 }
 
+#ifdef CONFIG_EINFO
+uint8_t cvt_info(cvt_peek_t peek, void *ctx) {
+  uint8_t *e = get_entry(peek, ctx);
+  uint8_t flags, b;
+
+  if (e == NULL)
+    return CVTINFO_NONE;
+
+  /* REL has the record length where GEOS has the structure */
+  if ((e[CVT_OFS_TYPE] & TYPE_MASK) == TYPE_REL) {
+    flags = CVTINFO_REL;
+  } else {
+    flags = (e[CVT_OFS_STRUCT] == 1) ? CVTINFO_VLIR : 0;
+    if (header_size(peek, ctx, e) != CVT_BLOCK_SIZE)
+      flags |= CVTINFO_INFO;
+  }
+
+  /* "PRG formatted ..." or "PRG GeoConvert98-format V2.0" */
+  if (!peek(ctx, CVT_SIG_OFFSET + SIG_TAIL_OFFSET + 1, &b, 1) && b == 'G')
+    flags |= CVTINFO_V2;
+
+  return flags;
+}
+#endif
+
 uint8_t cvt_record(cvt_peek_t peek, void *ctx, uint8_t record,
                    uint32_t *offset, uint32_t *length) {
   uint8_t *e = get_entry(peek, ctx);

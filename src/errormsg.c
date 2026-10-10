@@ -208,6 +208,11 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
       msg = appendbool(msg, '*', globalflags & POSTMATCH);
       *msg++ = 'E';
       msg = appendbool(msg, 'T', globalflags & CHECK_TYPE);
+#ifdef CONFIG_CVT
+      *msg++ = 'E';
+      msg = appendbool(msg, 'C', globalflags & CVT_FSNAME);
+#endif
+      msg = appendbool(msg, 'P', globalflags & PETSCII_CLASSES);
 
       *msg++ = 'I';
       msg = appendnumber(msg, image_as_dir);
@@ -275,6 +280,29 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
 
   /* Send message without the final 0x0d */
   display_errorchannel(msg - error_buffer, error_buffer);
+}
+
+/**
+ * set_error_text - set the error channel to a message with its own text
+ * @errornum: number of the message
+ * @text    : text of the message (RAM, 0-terminated)
+ *
+ * The message is "errornum,text,0,0" with CR. Used for answers that are
+ * no fixed message (EC: the generated name, E?: the file info). The text
+ * is cut if it does not fit into the error buffer.
+ */
+void set_error_text(uint8_t errornum, const uint8_t *text) {
+  uint8_t *msg;
+  uint8_t room = CONFIG_ERROR_BUFFER_SIZE - 9;   /* "nn," and ",0,0" CR 0 */
+
+  set_error(ERROR_OK);                           /* LED and buffer state */
+  msg = appendnumber(error_buffer, errornum);
+  *msg++ = ',';
+  while (*text && room--)
+    *msg++ = *text++;
+  memcpy_P(msg, PSTR(",0,0\r"), 6);
+  buffers[ERRORBUFFER_IDX].lastused = msg + 4 - error_buffer;
+  current_error = errornum;
 }
 
 /* Callback for the error channel buffer */

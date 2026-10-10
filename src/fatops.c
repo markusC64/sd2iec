@@ -2748,25 +2748,230 @@ copy_done:
   if (current_error != 0 && current_error != ERROR_OK)
     return;
 
-  if (newname == NULL) {
+  if (newname == NULL)
     /* Report the generated name: 80,<name>,0,0 */
-    uint8_t *p = error_buffer;
-
-    set_error(ERROR_OK);
-    *p++ = '8';
-    *p++ = '0';
-    *p++ = ',';
-    ustrcpy(p, tempname);
-    while (*p) p++;
-    ustrcpy_P(p, PSTR(",0,0\r"));
-    error_buffer[CONFIG_ERROR_BUFFER_SIZE-1] = 0;
-    buffers[CONFIG_BUFFER_COUNT].data     = error_buffer;
-    buffers[CONFIG_BUFFER_COUNT].lastused = ustrlen(error_buffer)-1;
-    buffers[CONFIG_BUFFER_COUNT].position = 0;
-    current_error = 80;
-    set_error_led(0);
-  }
+    set_error_text(80, tempname);
 }
+
+#ifdef CONFIG_EINFO
+/* ------------------------------------------------------------------------- */
+/*  E?: what a file is on FAT                                                */
+/* ------------------------------------------------------------------------- */
+
+#ifndef CONFIG_EINFO_WITHOUT_NAMES
+/* A physical (ASCII) FAT name as PETSCII, after a ':'. ~ becomes * and */
+/* anything that is no ASCII ? (none of them can be in a FAT name).     */
+static uint8_t *put_fatname(uint8_t *out, const uint8_t *name) {
+  uint8_t c;
+
+  *out++ = ':';
+  while ((c = *name++)) {
+    if (c >= 0x80)
+      c = '?';
+    else if (c == '~')
+      c = '*';
+    else if (c >= 'a' && c <= 'z')
+      c -= 0x20;
+    else if (c >= 'A' && c <= 'Z')
+      c += 0x80;
+    *out++ = c;
+  }
+  return out;
+}
+
+/* a equals the first len characters of b (and has len characters) */
+static uint8_t fatname_eq(const uint8_t *a, const uint8_t *b, uint8_t len, uint8_t nocase) {
+  uint8_t x, y;
+
+  while (len--) {
+    x = *a++;
+    y = *b++;
+    if (nocase) {
+      x = toupper(x);
+      y = toupper(y);
+    }
+    if (x != y || !x)
+      return 0;
+  }
+  return *a == 0;
+}
+
+/* The name has a type extension (.PRG/.SEQ/.USR/.REL/.CVT, any case) */
+static uint8_t has_type_ext(const uint8_t *name) {
+  uint8_t e[5], *ext, i;
+
+  ext = ustrrchr(name, '.');
+  if (ext == NULL || ustrlen(ext) != 4)
+    return 0;
+  for (i = 0; i < 5; i++)
+    e[i] = toupper(ext[i]);
+  i = check_extension(e, &ext);
+  return i == EXT_IS_TYPE
+#ifdef CONFIG_CVT
+      || i == EXT_IS_CVT
+#endif
+    ;
+}
+
+#endif /* !CONFIG_EINFO_WITHOUT_NAMES */
+
+#ifndef CONFIG_EINFO_WITHOUT_NAMES
+/* The names part of E? on FAT, appended at p: physical names, NK, N/A */
+static uint8_t describe_names(path_t *path, cbmdirent_t *dent, uint8_t *typed,
+                              uint8_t *p, exttype_t et, uint8_t isdir) {
+  partition_t *part = &partition[path->part];
+  uint8_t *sfn = dent->pvt.fat.realname;
+  uint8_t *tmp = p + 120;        /* build_name needs 45 bytes */
+  uint8_t *phys;
+  uint8_t xe5 = (file_extension_mode == 5);
+  uint8_t haslfn, canon, len;
+  FILINFO finfo;
+  DIR dj;
+  FRESULT res;
+
+  /* The LFN, if there is one: dent only has the 8.3 name. f_stat does */
+  /* not return a LFN, only f_readdir does: look for the 8.3 name.      */
+  res = l_opendir(&part->fatfs, path->dir.fat, &dj);
+  finfo.lfn = ops_scratch;
+  while (res == FR_OK) {
+    res = f_readdir(&dj, &finfo);
+    if (res == FR_OK && !finfo.fname[0])
+      res = FR_NO_FILE;
+    if (res == FR_OK && !ustrcmp(finfo.fname, sfn))
+      break;
+  }
+  if (res != FR_OK) {
+    parse_error(res, 1);
+    return 1;
+  }
+  haslfn = (ops_scratch[0] != 0);
+  phys   = haslfn ? ops_scratch : sfn;
+
+  p = put_fatname(p, phys);
+  if (haslfn && !fatname_eq(ops_scratch, sfn, ustrlen(sfn), 1))
+    p = put_fatname(p, sfn);
+
+  /* Is it the name sd2iec would make? */
+  if (et == EXT_IS_X00
+#ifdef CONFIG_CVT
+      /* XEC-: the name shown is the one inside the CVT, not the file's */
+      || (dent->opstype == OPSTYPE_FAT_CVT && !(globalflags & CVT_FSNAME))
+#endif
+     ) {
+    canon = 2;
+  } else if (!haslfn && !xe5) {
+    /* The name matched modulo case. Upper case would need a LFN. */
+    canon = 1;
+    while (*typed) {
+      uint8_t c = *typed++;
+      if ((c >= 0xc1 && c <= 0xda) || (c >= 0x61 && c <= 0x7a))
+        canon = 0;
+    }
+  } else if (xe5 && !isdir && !has_type_ext(phys)) {
+    canon = 0;                   /* xe5 always writes a type extension */
+  } else {
+    ustrcpy(tmp, dent->name);
+    build_name(tmp, 0, 1);       /* no type, no x00: no extension */
+    len = ustrlen(phys);
+    canon = *tmp &&
+      (fatname_eq(tmp, phys, len, xe5) ||
+       (has_type_ext(phys) && fatname_eq(tmp, phys, len - 4, xe5)));
+  }
+
+  if (canon == 0)
+    ustrcpy_P(p, PSTR(":NK"));
+  else if (canon == 2)
+    ustrcpy_P(p, PSTR(":N/A"));
+  else
+    *p = 0;
+
+  return 0;
+}
+#endif
+
+/**
+ * fat_describe - what a file is on FAT, for E?
+ * @path : path of the file
+ * @dent : directory entry of the file
+ * @typed: the name as it was given in the command
+ * @out  : the text goes here (at least 256 bytes)
+ *
+ * The text is <kind>:<LFN>[:<8.3>][:NK|:N/A]. Kind is the type extension
+ * (PRG/SEQ/USR/REL), NOTYPE (none: a PRG), X00, CVT with SEQ/VLIR/REL,
+ * V1/V2 and I (INFO block), CVT? (.CVT that is no CVT) or DIR. The names
+ * are the physical ones (8.3 only if there is no LFN or it differs).
+ * NK: the name is not the one sd2iec would make (build_name without type
+ * and x00, modulo a type extension; .prg may be implicit, with xe5 a file
+ * needs one). Without LFN only the case can be wrong: 8.3 can only hold
+ * PETSCII lower case. x00 is N/A, every system has its own idea there, as
+ * is a CVT with XEC- (the name shown is the one inside).
+ * With CONFIG_EINFO_WITHOUT_NAMES only the kind is given.
+ * Returns 0 on success, non-zero if the file can't be examined.
+ */
+uint8_t fat_describe(path_t *path, cbmdirent_t *dent, uint8_t *typed, uint8_t *out) {
+  partition_t *part = &partition[path->part];
+  uint8_t *sfn = dent->pvt.fat.realname;
+  uint8_t *ext;
+  uint8_t isdir = (dent->typeflags & EXT_TYPE_MASK) == TYPE_DIR;
+  exttype_t et;
+#ifdef CONFIG_CVT
+  FRESULT res;
+#endif
+
+  part->fatfs.curr_dir = path->dir.fat;
+
+  /* The kind first: the CVT layer uses ops_scratch, the LFN goes there */
+  et = check_extension(sfn, &ext);
+  if (isdir) {
+    ustrcpy_P(out, PSTR("DIR"));
+  } else if (et == EXT_IS_X00) {
+    ustrcpy_P(out, PSTR("X00"));
+#ifdef CONFIG_CVT
+  } else if (dent->opstype == OPSTYPE_FAT_CVT) {
+    uint8_t f = CVTINFO_NONE;
+    uint8_t *p;
+
+    res = f_open(&part->fatfs, &part->imagehandle, sfn, FA_READ | FA_OPEN_EXISTING);
+    if (res != FR_OK) {
+      parse_error(res, 1);
+      return 1;
+    }
+    f = cvt_info(fat_peek, &part->imagehandle);
+    f_close(&part->imagehandle);
+
+    p = out;
+    ustrcpy_P(p, PSTR("CVT "));
+    p += 4;
+    if (f & CVTINFO_REL)
+      ustrcpy_P(p, PSTR("REL"));
+    else if (f & CVTINFO_VLIR)
+      ustrcpy_P(p, PSTR("VLIR"));
+    else
+      ustrcpy_P(p, PSTR("SEQ"));
+    p += ustrlen(p);
+    ustrcpy_P(p, (f & CVTINFO_V2) ? PSTR(" V2") : PSTR(" V1"));
+    if (f & CVTINFO_INFO)
+      ustrcpy_P(p + 3, PSTR(" I"));
+  } else if (et == EXT_IS_CVT) {
+    ustrcpy_P(out, PSTR("CVT?"));
+#endif
+  } else if (et == EXT_IS_TYPE) {
+    out[0] = ext[0];
+    out[1] = ext[1];
+    out[2] = ext[2];
+    out[3] = 0;
+  } else {
+    ustrcpy_P(out, PSTR("NOTYPE"));
+  }
+
+#ifndef CONFIG_EINFO_WITHOUT_NAMES
+  return describe_names(path, dent, typed, out + ustrlen(out), et, isdir);
+#else
+  (void)typed;
+  return 0;
+#endif
+}
+#endif
 
 const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consistent with d64ops and m2iops
   &fat_open_read,
