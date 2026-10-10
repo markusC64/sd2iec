@@ -1627,6 +1627,48 @@ static uint16_t d64_freeblocks(uint8_t part) {
   return blocks;
 }
 
+#if defined(CONFIG_CVT) || defined(CONFIG_EINFO)
+/* GEOS part of a D64 directory entry */
+#define DIR_OFS_GEOS_INFO_TRACK  0x15
+#define DIR_OFS_GEOS_INFO_SECTOR 0x16
+#define DIR_OFS_GEOS_STRUCT      0x17   /* REL: the record length */
+#define DIR_OFS_GEOS_TYPE        0x18
+
+/* GEOS file: DEL..USR (REL and the others use the bytes differently), */
+/* structure SEQ or VLIR, and structure and GEOS type not both 0.      */
+static uint8_t cvt_is_geos(const uint8_t *e) {
+  uint8_t struc = e[DIR_OFS_GEOS_STRUCT];
+
+  return (e[DIR_OFS_FILE_TYPE] & TYPE_MASK) <= TYPE_USR && struc <= 1 &&
+         (struc | e[DIR_OFS_GEOS_TYPE]);
+}
+
+#endif
+
+#ifdef CONFIG_EINFO
+/**
+ * d64_describe - what kind of file it is, for E?
+ * @path: path of the file
+ * @dent: directory entry of the file
+ * @out : the text goes here
+ *
+ * GEOS VLIR, GEOS SEQ or CBM (the same check as for ,V).
+ * Returns 0 on success, non-zero if the entry can't be read.
+ */
+uint8_t d64_describe(path_t *path, cbmdirent_t *dent, uint8_t *out) {
+  if (read_entry(path->part, &dent->pvt.dxx.dh, ops_scratch))
+    return 1;
+
+  if (!cvt_is_geos(ops_scratch))
+    ustrcpy_P(out, PSTR("CBM"));
+  else if (ops_scratch[DIR_OFS_GEOS_STRUCT])
+    ustrcpy_P(out, PSTR("GEOS VLIR"));
+  else
+    ustrcpy_P(out, PSTR("GEOS SEQ"));
+  return 0;
+}
+#endif
+
 #ifdef CONFIG_CVT
 /* ------------------------------------------------------------------------- */
 /*  CVT stream of a file in an image                                         */
@@ -1666,11 +1708,6 @@ static uint16_t d64_freeblocks(uint8_t part) {
 
 #define CVT_BLOCK         254           /* size of every block of a CVT */
 
-/* GEOS part of a D64 directory entry */
-#define DIR_OFS_GEOS_INFO_TRACK  0x15
-#define DIR_OFS_GEOS_INFO_SECTOR 0x16
-#define DIR_OFS_GEOS_STRUCT      0x17   /* REL: the record length */
-#define DIR_OFS_GEOS_TYPE        0x18
 
 /* pvt.d64cvt.state: which block comes next, plus flags */
 #define CVT_NEXT_INFO     0
@@ -1948,15 +1985,6 @@ static uint8_t d64_cvt_seek(buffer_t *buf, uint32_t pos, uint8_t index) {
  nodata:
   cvt_no_data(buf);
   return 1;
-}
-
-/* GEOS file: DEL..USR (REL and the others use the bytes differently), */
-/* structure SEQ or VLIR, and structure and GEOS type not both 0.      */
-static uint8_t cvt_is_geos(const uint8_t *e) {
-  uint8_t struc = e[DIR_OFS_GEOS_STRUCT];
-
-  return (e[DIR_OFS_FILE_TYPE] & TYPE_MASK) <= TYPE_USR && struc <= 1 &&
-         (struc | e[DIR_OFS_GEOS_TYPE]);
 }
 
 /**

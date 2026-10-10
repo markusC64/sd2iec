@@ -56,6 +56,11 @@ void     fat_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t se
 void     fat_format_image(path_t *path, uint8_t *name, uint8_t *id);
 
 extern const fileops_t fatops;
+
+#ifdef CONFIG_EINFO
+/* E?: what a file is on FAT (kind, physical names, canonical) */
+uint8_t fat_describe(path_t *path, cbmdirent_t *dent, uint8_t *typed, uint8_t *out);
+#endif
 extern uint8_t file_extension_mode;
 
 /* Decode a FAT name (resolving XE5 {XX} escapes) to a CBM/PETSCII name.

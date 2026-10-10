@@ -2680,6 +2680,19 @@ static void parse_xcommand(void) {
     // FIXME set_changelist(&path, str);
     break;
 
+  case 'P':
+    /* XP+/-: compare file names by PETSCII equivalence classes */
+    num = parse_bool();
+    if (num != 255) {
+      if (num)
+        globalflags |= PETSCII_CLASSES;
+      else
+        globalflags &= (uint8_t)~PETSCII_CLASSES;
+
+      set_error_ts(ERROR_STATUS,device_address,0);
+    }
+    break;
+
   case '*':
     /* Post-* matching */
     num = parse_bool();
@@ -2907,10 +2920,57 @@ static void parse_convert(void) {
   }
 }
 
+#ifdef CONFIG_EINFO
+/* -------------------------------------------- */
+/*  E? - what a file is (FAT: its physical form) */
+/* -------------------------------------------- */
+static void parse_einfo(void) {
+  path_t      path;
+  uint8_t    *name, err;
+  cbmdirent_t dent;
+  buffer_t   *buf;
+
+  if (parse_path(command_buffer+2, &path, &name, 0))
+    return;
+
+  if (ustrlen(name) == 0) {
+    set_error(ERROR_SYNTAX_NONAME);
+    return;
+  }
+
+  if (first_match(&path, name, FLAG_HIDDEN, &dent))
+    return;
+  set_error(ERROR_OK);
+
+  buf = alloc_system_buffer();
+  if (buf == NULL)
+    return;
+
+  if (partition[path.part].fop == &fatops)
+    err = fat_describe(&path, &dent, name, buf->data);
+  else if (partition[path.part].fop == &d64ops)
+    err = d64_describe(&path, &dent, buf->data);
+  else {
+    set_error(ERROR_SYNTAX_UNABLE);
+    err = 1;
+  }
+
+  if (!err)
+    set_error_text(81, buf->data);
+  free_buffer(buf);
+}
+#endif
+
 static void parse_ecommand(void) {
   clean_cmdbuffer();
 
   switch (command_buffer[1]) {
+#ifdef CONFIG_EINFO
+  case '?':
+    parse_einfo();
+    break;
+#endif
+
   case 'T':
     parse_changetype();
     break;

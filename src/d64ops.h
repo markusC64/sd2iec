@@ -84,4 +84,9 @@ uint8_t d64_extend_image(uint8_t part, uint8_t tracks);
 /* set an error code for a sector */
 uint8_t d64_set_error(uint8_t part, uint8_t track, uint8_t sector, uint8_t error);
 
+#ifdef CONFIG_EINFO
+/* E?: what kind of file it is (GEOS VLIR/GEOS SEQ/CBM) */
+uint8_t d64_describe(path_t *path, cbmdirent_t *dent, uint8_t *out);
+#endif
+
 #endif
