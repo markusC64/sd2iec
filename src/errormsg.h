@@ -35,11 +35,12 @@ extern uint8_t error_buffer[CONFIG_ERROR_BUFFER_SIZE];
 
 
 void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector);
+void set_error(uint8_t errornum);
+uint8_t set_ok_message(buffer_t *buf);
+void set_close_status(uint8_t secondary);
 
 /* Error channel message with its own text: "errornum,text,0,0" */
 void set_error_text(uint8_t errornum, const uint8_t *text);
-void set_error(uint8_t errornum);
-uint8_t set_ok_message(buffer_t *buf);
 
 // Commodore DOS error codes
 #define ERROR_OK                  0

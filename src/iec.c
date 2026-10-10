@@ -681,6 +681,7 @@ void iec_mainloop(void) {
               free_buffer(buf);
             }
           }
+          set_close_status(iec_data.secondary_address);
           iec_data.bus_state = BUS_FORME;
         } else {
           iec_data.bus_state = BUS_ATNFINISH;
