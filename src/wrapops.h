@@ -79,8 +79,10 @@ typedef struct fileops_s {
   void     (*rename)(path_t *path, cbmdirent_t *oldname, uint8_t *newname);
   void     (*set_attrib)(path_t *path, cbmdirent_t *name, uint8_t attr);
   void     (*set_headername)(path_t *path, uint8_t *newname, uint8_t *newid);
+#ifndef CONFIG_DISABLE_EC_AND_ET
   void     (*change_type)(path_t *path, cbmdirent_t *dent, uint8_t newtype);
   void     (*convert)(path_t *path, cbmdirent_t *dent, uint8_t *newname);
+#endif
 } fileops_t;
 
 /* Helper-Define to avoid lots of typedefs */
@@ -110,7 +112,9 @@ typedef struct fileops_s {
 #define rename(path,old,new) ((pgmcall(partition[(path)->part].fop->rename))(path,old,new))
 #define set_attrib(path,name,attr) ((pgmcall(partition[(path)->part].fop->set_attrib))(path,name,attr))
 #define set_headername(path,name,id) ((pgmcall(partition[(path)->part].fop->set_headername))(path,name,id))
+#ifndef CONFIG_DISABLE_EC_AND_ET
 #define change_type(path,dent,type)  ((pgmcall(partition[(path)->part].fop->change_type))(path,dent,type))
 #define convert_file(path,dent,name) ((pgmcall(partition[(path)->part].fop->convert))(path,dent,name))
+#endif
 
 #endif

@@ -2745,6 +2745,7 @@ static void parse_xcommand(void) {
   }
 }
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
 /* ------------------------------- */
 /*  ET - change file type          */
 /* ------------------------------- */
@@ -2903,6 +2904,7 @@ static void parse_convert(void) {
     convert_file(&path, &dent, dstname);
   }
 }
+#endif
 
 #ifdef CONFIG_EINFO
 /* -------------------------------------------- */
@@ -2955,6 +2957,7 @@ static void parse_ecommand(void) {
     break;
 #endif
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
   case 'T':
     parse_changetype();
     break;
@@ -2962,6 +2965,7 @@ static void parse_ecommand(void) {
   case 'C':
     parse_convert();
     break;
+#endif
 
   case 'H':
     {

@@ -1947,7 +1947,9 @@ void fat_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector
  * file is then renamed after it, as far as possible), or just the file with
  * XEC+.
  */
+#ifndef CONFIG_DISABLE_EC_AND_ET
 static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname);
+#endif
 
 void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   uint8_t *ext;
@@ -2068,7 +2070,11 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       if (!*ops_scratch)
       {
          /* Not a FAT name: only an x00 file can have it, convert makes one */
+#ifdef CONFIG_DISABLE_EC_AND_ET
+         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+#else
          fat_convert(path, dent, newname);
+#endif
          return;
       }
       
@@ -2083,7 +2089,11 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       if (!*ops_scratch)
       {
          /* Not a FAT name: only an x00 file can have it, convert makes one */
+#ifdef CONFIG_DISABLE_EC_AND_ET
+         set_error_ts(ERROR_SYNTAX_JOKER,0,0);
+#else
          fat_convert(path, dent, newname);
+#endif
          return;
       }
       
@@ -2496,6 +2506,7 @@ static void fat_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
 static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
   uint8_t *x00ext;
   FRESULT  res;
@@ -2758,6 +2769,7 @@ copy_done:
     /* Report the generated name: 80,<name>,0,0 */
     set_error_text(80, tempname);
 }
+#endif
 
 #ifdef CONFIG_EINFO
 /* ------------------------------------------------------------------------- */
@@ -2997,8 +3009,11 @@ const PROGMEM fileops_t fatops = {  // These should be at bottom, to be consiste
   &fat_chdir,
   &fat_rename,
   &fat_set_attrib,
+#ifdef CONFIG_DISABLE_EC_AND_ET
+  &fat_set_headername
+#else
   &fat_set_headername,
   &fat_change_type,
   &fat_convert
-
+#endif
 };

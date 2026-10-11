@@ -3466,6 +3466,7 @@ static uint8_t cvt_to_geos(uint8_t part, struct d64dh *dh, buffer_t *buf) {
   return 1;
 }
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
 /* Set the bytes after the last used one of a sector to 0 */
 static uint8_t cvt_zero_padding(uint8_t part, uint8_t t, uint8_t s, uint8_t used) {
   uint16_t pos = used + 1;
@@ -3646,6 +3647,7 @@ static uint8_t cvt_from_geos(uint8_t part, struct d64dh *dh, cbmdirent_t *dent, 
 
   return write_entry(part, dh, e, 1);
 }
+#endif
 
 /**
  * d64_cvt_write_cleanup - cleanup-callback of a file written with ,V
@@ -3673,6 +3675,7 @@ static uint8_t d64_cvt_write_cleanup(buffer_t *buf) {
 }
 #endif /* CONFIG_CVT */
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
 static void d64_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
      uint8_t *ptr;
 
@@ -3725,7 +3728,7 @@ static void d64_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   (void)path; (void)dent; (void)newname;
   set_error(ERROR_SYNTAX_UNABLE);
 }
-
+#endif
 
 
 /* ------------------------------------------------------------------------- */
@@ -3750,7 +3753,11 @@ const PROGMEM fileops_t d64ops = {
   d64_chdir,
   d64_rename,
   d64_set_attrib,
+#ifdef CONFIG_DISABLE_EC_AND_ET
+  d64_set_headername
+#else
   d64_set_headername,
   d64_change_type,
   d64_convert
+#endif
 };

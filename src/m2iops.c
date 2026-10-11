@@ -480,6 +480,7 @@ static void m2i_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
    set_error(ERROR_SYNTAX_UNABLE);
 }
 
+#ifndef CONFIG_DISABLE_EC_AND_ET
 static void m2i_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
   (void)path; (void)dent; (void)newtype;
   set_error(ERROR_SYNTAX_UNABLE);
@@ -489,6 +490,7 @@ static void m2i_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   (void)path; (void)dent; (void)newname;
   set_error(ERROR_SYNTAX_UNABLE);
 }
+#endif
 
 const PROGMEM fileops_t m2iops = {
   m2i_open_read,
@@ -509,7 +511,9 @@ const PROGMEM fileops_t m2iops = {
   m2i_rename,
   m2i_set_attrib,
   m2i_set_headername,
+#ifndef CONFIG_DISABLE_EC_AND_ET
   m2i_change_type,
   m2i_convert
+#endif
 
 };
