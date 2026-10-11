@@ -2761,19 +2761,6 @@ static void parse_xcommand(void) {
        parse_set_header(2);
     break;
 
-  case 'C':
-    /* XC+: CLOSE sets 00,OK (FD2000), XC-: CLOSE keeps the error (1541) */
-    num = parse_bool();
-    if (num != 255) {
-      if (num)
-        globalflags &= (uint8_t)~CLOSE_KEEPS_ERROR;
-      else
-        globalflags |= CLOSE_KEEPS_ERROR;
-
-      set_error_ts(ERROR_STATUS,device_address,0);
-    }
-    break;
-
   default:
     if (command_length != 1)
       /* unknown command */

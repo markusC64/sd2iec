@@ -59,9 +59,6 @@ extern uint8_t globalflagsInt;
                                 /* equivalence classes (192-223 = 96-127,         */
                                 /* 224-254 = 160-190, 255 = 126). Bit 5 was       */
                                 /* SWAPLIST_ASCII in old firmware, see above.     */
-#define CLOSE_KEEPS_ERROR (1<<2) /* XC-: CLOSE leaves the error channel alone     */
-                                /* (1541), XC+: CLOSE sets 00,OK (FD2000, D9FB). */
-                                /* Bit 2 was AUTOSWAP_ACTIVE in old firmware.     */
 
 /* Disk image-as-directory mode, defined in fileops.c */
 extern uint8_t image_as_dir;
