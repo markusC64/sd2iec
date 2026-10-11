@@ -164,7 +164,9 @@ int main(void) {
   DS_TITLE;
 #endif
 
+#ifndef __ets__
   bus_mainloop();
 
   while (1);
+#endif
 }

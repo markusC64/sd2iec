@@ -64,6 +64,14 @@ void ar6_1581_send_byte(uint8_t byte);
 uint8_t ar6_1581p_get_byte(void);
 
 void n0sdos_send_byte(uint8_t byte);
+//---
+void wof_sync(void);
+uint8_t wof_get_byte(void);
+void wof_put_byte(uint8_t byte);
+
+void n0s_iffl_put_byte(uint8_t byte);
+//---
+
 
 uint8_t ultraboot_send_byte(uint8_t byte);
 

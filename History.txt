@@ -1,0 +1,148 @@
+History of Arduino Mega2560 SD2IEC LCD project
+
+23.12.2019
+First try on the SD2IEC LCD 0.8d, unfinished, only for test if the LCD_NEW library work with NO RW pin.
+
+29.12.2019
+First run without any errors on the modified SD2IEC LCD 1.0.0. code on the Arduino Mega2560 with LCD shield.
+
+14.1.2020
+Added LED between AN0 and AN1 for .d64 button. File SD2IEC2.hex
+
+
+24.1.2020
+Added Digispark module for translate between keypad analog keys and digital input for keys. Next key moved on AN2. Program for Digispark written in the GCBasic.
+
+Source, hex and Micronucleus files for programing are stored in the /ATtiny85 directory.
+
+4.2.2020
+Added Digispark FW  writen in the Arduino IDE /Attiny85/Arduino_IDE/tiny85.ino.
+
+13.2.2020
+
+Added an error message in the lcd.h file.
+
+8.3.2021
+
+Source Files sync with the last version of sd2iec lcd by SvOlli.
+
+
+21.5.2021 
+
+
+- The lcd.c and lcd.h file now is compatible with other HW versions.
+- 4 partitions setting in config file.
+- 4 new fastloaders.
+- Source sync with the last version of sd2iec lcd by SyOlli and Ingo Korb.
+
+
+29.6.2021 
+
+- Fix in XS-1541 configuration;
+- makebin script for compile all version at once;
+- Arduino-lcd configuration for version with Digispark module and Arduino-lcd-s
+  configuration for simplified version, no more need to edit arch-config.h file;
+- file mega2560_LCD_pinout.txt renamed to Arduino_LCD_pinout.txt;
+- file mega2560_LCD.txt renamed to Arduino_LCD.txt;
+- folder /doc/Mega2560 renamed to doc/Arduino;
+- fixes in documentation.
+- config-larsp renamed to config-lcd and vice versa - thanks 92dziki
+
+17.10.2021
+
+- config-lcd file is deleted. The reason: does not work
+- config-lcdcf file is deleted. The reason: is same as config-larsp
+- new file variants.doc with a brief description of configuration files
+- new file c64utils.d64 with the SD2IEC utility programs for the C64
+- new file c64utils.txt for a short description of files on the c64utils.d64
+- LCD autodetec routine also for the Arduino versions (lcd,c and lcd.h)
+- new LCD command XL for view LCD type (doscmd.c)
+- updated CONFIGURATOR and LCD DEMO program on the c64utils.d64 file;
+- updated README_LCD file;
+- bugfixes in the T-WA command  to handle data properly (doscmd.c)
+- Makefbin script for produced binaries with the information about configuration file
+- new LCD command T-RL to display current date&time on LCD;
+- FW version changed from 1.0.0+ to 1.0.1 due bugfixes, new features and Arduino version integration with the other HW versions
+
+14.11.2021
+
+- No more need Digispark module for Ardduino versions (timer.c arch-config.h)
+- dropped support for Digispark and update  documentation, Makebin and Makefbin fil
+- Files for the C64 moved to C64 directory
+
+25.11.2021
+- fix sometime missing Commodore logo on boot screen display_lcd.c)
+- new XB command shows the boot message (display_lcd.h doscmd.c)
+- LCDDEMO program updated
+- support for Arduino Mega 1280 board (avrcompat.h config system.c variables.mk)
+- file Makebin is removed.
+
+23.1.2022
+- expanded information about XTC command (README_LCD file)
+- corrected errors in description of  UJ: command (README file)
+- new command XTR to restore  information on LCD about current directory or mounted image (doscmd,c)
+- improvement in the T-RL command (at end restore information about drive or mounting image) (doscmd,c)
+- update in the LCDDEMO program for C64
+- bugfix in Configurator
+
+22.2.2022
+- finally only one hex file for ali Arduino sub variants (timer.c)
+- Arduino support Sleep function via LCD keypad shield (timer.c)
+- Message about the Sleep state on LCD for all HW variants with LCD,
+- Updates in documentation,
+- Update in the Makefbin file,
+- Updates in the confiigs directory
+- CP command show partition number on the LCD screen (doscmd,c)
+- Input validation of command G-P is fixed (doscmd,c)
+- Fixed typos in line 1800 and 1820 (missing bracket) in Configurator program
+
+3.4.2022
+- Bugfix in timer.c to prevent compiler error in case when Arduino variant is set with no LCD
+- OPTION_CLK renamed in OPION_PORT (lcd.c lcd.h)
+- The choice of which version of lcd.c is compiled is now dependent on whether the
+  LCD_RW_ PIN is defined or not, no longer via HW variant
+- /doc folder divided in more subfolders
+
+From https://github.com/thierer/sd2iec/tree/more_fastloaders 
+- Support for hypraload (Makefile.main fl-hypraload.c fastloader.h, fastloader-ii.h fastloader-ii.s doscmd.c d64ops.c d64ops.h)
+- Support for ultraboot loader
+- Support for extended .d64 images (40 tracks)
+
+- Bugfix in errormsg.c for more reliable work of fastloaders
+- New variable ready_msg_only_once to prevent flickering of READY msg in line 2
+- Bugfix in timer.c to  realiable work of sleep function
+- New msg when SD2IEC is in sleep mode
+- Improvement of commands XT1, XT2 and XTC, now works without READY in line 2
+- Bugfix in lcddemo for C64 line 1530 changed to 1540 and vice versa
+- Information for calculation of LCD timing obtain from config file (lcd.h)
+
+22.10.2022
+
+- support for Krill IRQ loader versions 58,146,159, 164, 184, 186
+
+Note: Loaders for Another word, N0S IFFL and Wings of furry are disabled in this release!
+
+
+7.11.2022
+
+- support for Another word, N0S IFFL and Wings of furry is back
+- example settings for onboard  LCD (config-example lcd.h)
+
+8.1.2023
+
+- Sync with last official version sd2iec-1.0.0atentdead0-34-ga700f1f 
+- informations about fuse bits settings on the Arduino variants (doc/Arduino/fusebits.txt)
+- support for ESŠ8266 from https://github.com/kasbert/sd2iec_esp
+  changes in bus.h config.h eeprom-conf.c fastloader.c ff.h fl-krill.c iec.c iec.h main.c   Makefbin
+- informations about SD2IEC ESP8266 (doc/ESP8266/Readme.txt)
+- support for alnwlsn variant from https://github.com/alnwlsn/sd2iec-alnwlsn
+  changes in files: config-alnwlsn arch-config.h Makefbin)
+- Bugfix llfl-parallel.c add check if parallel connection is enabled
+- Bugfix llfl-dreamload.c before incompatibile with bool type variables used in fastloader.h
+- Bugfix llfl-common.c before incompatibile with bool type variables used in fastloader.h 
+- Documentation, schematic diagram for arm2iec1 variant /doc/ARM
+ - How to instructions for compiling ESP8266 on Windows /doc/ESP8266/Msys_on_Windows.txt
+- export_esp_path.sh script for easy add paths for esp tolchain and SDK in MSYS
+- How to instructions for compiling LPC17xx on Windows /doc/ARM/Msys.txt
+------------------------
+End of History.txt file.

@@ -39,9 +39,7 @@
 #include "progmem.h"
 #include "timer.h"
 #include "fastloader.h"
-
 fastloaderid_t detected_loader;
-
 /* Function pointer to the current byte transmit/receive functions */
 /* (to simplify loaders with multiple variations of these)         */
 uint8_t (*fast_send_byte)(uint8_t byte);

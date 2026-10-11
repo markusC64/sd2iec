@@ -1,0 +1,28 @@
+Last update 6.1.2023
+
+How to build compiling environment for ESP8266 Non-Os on Windows OS
+
+NOTE
+These step by step instructions assume that the MSYS is installed on your Windows system.If not, please first read doc\Arduino\Arduino_LCD.txt, section: "SD2IEC development environment for Windows XP and above" for build a portable MSYS environment, or download and install prebuild standalone MSYS foe Windows 7 and above from: https://docs.espressif.com/projects/esp8266-rtos-sdk/en/latest/get-started/windows-setup.html
+Direct link to download prebuild MSYS
+https://dl.espressif.com/dl/esp32_win32_msys2_environment_and_toolchain-20181001.zip
+
+1. If you do not have an installed copy of Python, download and install it from    https://www.python.org/. Do not forget add  Python to PATH.
+
+2. Download the toolchain version 8.4.0 for ESP8266
+   https://dl.espressif.com/dl/xtensa-lx106-elf-gcc8_4_0-esp-2020r3-win32.zip
+   Unzip the zip file to C:\
+
+3. Download the ESP8266 Non-OS SDK 3.0.5
+   https://github.com/espressif/ESP8266_NONOS_SDK
+   Unzip the zip file to C:\
+
+4, In the .../msys/etc directory create new directory "profile.d" (wuthout quote), if this
+   directory not already exist, and in the profile,d direcory copy the file
+   export_esp_path.sh from this directory, 
+
+5. Copy all files from C:\ESP8266_NONOS_SDK\lib
+   to (and overwrite existing files) C:\xtensa-lx106-elf\lib\gcc\xtensa-lx106-elf\8.4.0 
+
+6. Start the Msys and go to sd2iec-lcd directory and try to compile esp variant by command
+make CONFIG:configs/config-esp8266

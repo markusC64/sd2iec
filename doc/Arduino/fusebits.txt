@@ -1,0 +1,16 @@
+Fuses and lock bits settings
+(Arduino's defaukt settings)
+ 
+Arduino Mega 2560 (with ATmega2560)
+
+Low fuses      = 0xFF
+High fuses     = 0xD8
+Extended fuses = 0xFD
+Lock Bits      = 0x3F
+
+Arduino Mega  or Arduino Mega 1280 (with ATmega1280)
+
+Low fuses      = 0xFF
+High fuses     = 0xDA
+Extended fuses = 0xF5
+Lock Bits      = 0x3F

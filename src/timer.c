@@ -31,11 +31,24 @@
 #include "rtc.h"
 #include "softrtc.h"
 #include "timer.h"
+#ifdef CONFIG_LCD_DISPLAY
+#include "display_lcd.h"
+#endif
 
 #define DEBOUNCE_TICKS 4
 #define SLEEP_TICKS    2*HZ
 
 volatile tick_t ticks;
+
+//Arduino only variable
+#if CONFIG_HARDWARE_VARIANT == 11
+static uint8_t sleep_flag;
+// Explanation of sleep_flag:
+// sleep_flag == 0   mormal operation
+// sleep_flag == 170 prepare to sleep state
+// sleep_flag == 255 sleep state, don't read analog keyboard anymore
+#endif
+
 // Logical buttons
 volatile uint8_t active_keys;
 
@@ -67,6 +80,70 @@ static void buttons_changed(void) {
   lastbuttonchange = ticks;
   buttonstate = buttons_read();
 }
+
+#if CONFIG_HARDWARE_VARIANT == 11
+// Arduino specific, analog keypad read
+ISR(ADC_vect) // Reason for sleep_flag variable
+{
+static uint8_t adc_read;
+
+if(sleep_flag != 255) {
+//if(active_keys != KEY_SLEEP) {
+adc_read = ADCH;
+
+// Key [Right]
+if(adc_read < 16)  {
+    active_keys |= KEY_HOME;
+    lastbuttonchange = ticks;
+    buttonstate = 0;
+    }
+// Key [Down] or [Up]
+if((adc_read > 15) && (adc_read < 84)) {
+
+if (sleep_flag == 170) {
+        sleep_flag = 255;
+        /* Msg about Sleep state on the LCD screen */
+#ifdef CONFIG_LCD_DISPLAY
+        if (lcd_controller_type() != 0) {
+        DS_SHOWP(0," zzz I sleep zzz");
+        DS_SHOWP(1,"  zzz  zzz  zzz");
+        }
+#endif
+    active_keys |= KEY_SLEEP | IGNORE_KEYS;
+    lastbuttonchange = ticks;
+    buttonstate = 3;
+    }
+if (sleep_flag == 0) {
+    sleep_flag = 170;
+    active_keys |= KEY_NEXT;
+    lastbuttonchange = ticks;
+    buttonstate = 2;
+    }
+
+}
+// Key [Left]
+if((adc_read > 83) && (adc_read < 140)) {
+    active_keys |= KEY_PREV;
+    lastbuttonchange = ticks;
+    buttonstate = 4;
+    }
+// Key [Select]
+if((adc_read > 139) && (adc_read < 212)) {
+    active_keys |= KEY_NEXT;
+    lastbuttonchange = ticks;
+    buttonstate = 2;
+    }
+
+
+// No key pressed
+if(adc_read > 213) {
+if(sleep_flag != 255) {
+    sleep_flag = 0;
+    }
+  }
+ }
+}
+#endif
 
 /* The main timer interrupt */
 SYSTEM_TICK_HANDLER {
@@ -101,6 +178,17 @@ SYSTEM_TICK_HANDLER {
       active_keys |= KEY_SLEEP | IGNORE_KEYS;
       /* Avoid triggering for the next two seconds */
       lastbuttonchange = ticks;
+/* No more read the Arduino's analog keyboard */
+#if CONFIG_HARDWARE_VARIANT == 11
+        sleep_flag = 255;
+#endif
+/* Msg about Sleep state on the LCD screen if LCD is present*/
+#ifdef CONFIG_LCD_DISPLAY
+        if (lcd_controller_type() != 0) {
+        DS_SHOWP(0," zzz I sleep zzz");
+        DS_SHOWP(1,"  zzz  zzz  zzz")
+        }
+#endif
     }
   }
 

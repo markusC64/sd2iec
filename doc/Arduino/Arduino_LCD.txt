@@ -1,0 +1,375 @@
+This notes are for the SD2IEC LCD version 1.0.1 on an Arduino Mega 1280 or 2560 !
+Last update: 22.2.2022
+REMARK:
+All in this Arduino directory, as stated for the Arduino Mega 2560 also applies to older Arduino Mega 1280 board.
+
+Based on SD2IEC project by Ingo Korb and SD2IEC LCD project by Draco and CapFuture1975 and the Mega 2560 SD2IEC project by Lars Wadefalk.
+
+##Features of this version SD2IEC
+
+- It contain almost only ready to use components and modules, so you  need only very basic soldering skils to make an IEC cable (and mod Tiny RTC). 
+- Work with unmodified Arduino Mega 2560 or clone.
+- Use an Arduino Micro SD module, very easy to buy and which already includes a voltage regulator.
+
+##Limitations
+
+- No FW update via SD card, only via Arduino USB port.
+
+NOTICE: 
+I'm not responsible for any damage that may occur to your devices by
+following this guide, do it at your own risk.
+
+##Versions
+
+Minimum, only Arduino, SD card reader and IEC cable: Only basic functions, the cheapest, butot much
+Recommended: All features, but slighty expensive, need also a LCD keypad shield and Tiny RTC module.
+
+IMPORTANT NOTE for the users of simplified Arduino version:
+Please remove the LED between Ao and A1 pin on your Arduino SD2IEC LCD before use this FW update.
+
+##Schematic diagram:
+
+Arduino-lcd-sch.png
+
+##Bill  of material for full featured version
+
+1x Arduino Mega 2560 or clone / or 1x Arduino Mega 1280 or clone
+1x Arduino LCD keypad shield
+1x MICRO SD Arduino module with 3.3 V REGULATOR <-important
+1x Tiny RTC (DS1307 RTC) module (optional)
+1x Arduino Proto/Screw Shield V2 (recommended for easy connection)
+
+Some jumper wires (male to female) to connect the SD card and RTC module with the Arduino
+
+For IEC cable
+1x conector DIN 6 pol male 
+1 m 5 wires shielded signal cable 
+3x 10 Ohm resistor 1/4 or 1/8 W
+
+LEDs and buttons (+ resistors for LEDs and buttons) are optional and not need for full functionaly..  
+
+1x BOX or CASE (recycled, built, bought) in which to assemble the device in
+
+##Connections
+
+NOTICE:
+
+For all  subvariants Arduino SD2IEC, please use the FW sd2iec.hex for your board (Mega1280 or Mega2560).
+
+Connections retrieved by the LCD keypad shield
+
+ANALOG_0 PORTF.0 = Input for the analog keypad
+
+LCD keypad shield Key map;
+
+Select = Next
+Left   = Prev 
+Right  = First .d64 file
+Down (or Up) = Sleep
+Reset  = Home
+
+LCD 16x2 display:
+
+DIGITAL_4 PORTG.5  ' PB4 LCD     
+DIGITAL_5 PORTE.3  ' PB5 LCD
+DIGITAL_6 PORTH.3  ' PB6 LCD     
+DIGITAL_7 PORTH.4  ' PB7 LCD
+DIGITAL_8 PORTH.5  ' RS LCD
+DIGITAL_9 PORTH.6  ' E LCD    
+DIGITAL_10 PORTB.4 ' LCD Backround Light for detection if the LCD keypad shield is present
+
+NOTICE:
+All that needs to be done is LCD keypad shield properly inserted into Arduino.
+
+USB communication for FW update and debug with the standard Arduino bootloader
+
+DIGITAL_0 PORTE.0       'Reserved for UART1 RX
+DIGITAL_1 PORTE.1       'Reserved for UART1 TX
+
+NOTICE:
+This is a standard Arduino feature.
+
+LEDs
+DIGITAL_11 PORTB.5 'Power LED
+DIGITAL_12 PORTB.6 'Busy LED
+DIGITAL_13 PORTB.7 'Dirty LED
+
+NOTICE:
+The anodes of LEDs are connected via a least 1 k resistor to the corresponding pin on Arduino and LEDs cathodes to the GND.
+
+External buttons control (optional)
+
+ANALOG_1 PORTF.1 = Prev button
+ANALOG_2 PORTF.2 = Next button
+Both  buttons = First .d64 file
+Long press of Next button = Sleep
+RESET = Home button
+
+NOTICE:
+The simultaneous operation of the keys on the LCD keypad shield and the external keys now is  available.
+
+IEC cable                             
+DIGITAL_18 PORTD.3 'IEC ATN pin 3
+DIGITAL_19 PORTD.2 'IEC DATA  pin 5
+DIGITAL_20 PORTD.1 'IEC CLOCK  pin 4
+DIGITAL_21 PORTD.0 'IEC SRQ  pin 1
+GND 'GND  pin 2
+
+NOTICE:
+The Arduino SD2IEC LCD not need RESET pin on the IEC cable.
+
+Software I2C bus for RTC
+DIGITAL_23 PORTA.1 'SDA Software I2C
+DIGITAL_25 PORTA.3 'SCL Software I2C
+
+SD card reader module switches (if exist)
+DIGITAL_33 PORTC.4 'SD card detect (Reserved but NOT in use)
+DIGITAL_34 PORTC.3 'SD card select (Reserved but NOT in use)
+
+SD card reader module comunication
+DIGITAL_50 PORTB.3 'MISO
+DIGITAL_51 PORTB.2 'MOSI
+DIGITAL_52 PORTB.1 'SCK
+DIGITAL_53 PORTB.0 '/ss
+
+NOTICE:
+All pins for SD card module comunication, except /ss, are also 
+available on the Arduino Mega 2560 ICSP connector.
+
+##Possible LEDs wirng in case with only 2 LEDs
+
+SD2IEC style
+
+Green LED on  = Read/Write
+Red LED blink = Error                        1k       RedLED
+
+
+Digital_12 _________/\  /\  ______|\|______ GND
+                      \/  \/      |/|    
+                        1k     Green LED
+
+Digital_13 _________/\  /\  ______|\|______ GND
+                      \/  \/      |/|    
+1541 style
+
+Green LED = Power
+
+Red LED
+on    = Read/Write
+blink = Error 
+
+Digital_11 _________/\  /\  ______|\|______ GND
+                      \/  \/      |/|    
+                        1k     Green LED
+
+Digital_12 __|\|___ 
+             |/|   |
+            1N4148 |
+                   |
+Digital_13 __|\|_____/\  /\  _____|\|______ GND
+             |/|       \/  \/     |/|    
+            1N4148       1k    Red LED
+
+NOTICE:
+Always use a least 1 k resistirs betveen Arduino pins and LEDs!
+
+##IEC cable schematic
+
+Din 6 pol male                           Arduino
+
+1 SQR ---------------------------------- Digital_21
+2 GND ---------------------------------- Any GND pin on Arduino
+3 ATN -/\/\----------------------------- Digital_18
+4 CLK -/\/\----------------------------- Digital_20
+5 DAT -/\/\----------------------------- Digital_19
+
+All resistors in the DIN connector are 10 Ohm 10 % 1/4 or 1/8 W
+
+##Resistors in the IEC cable
+
+The 10 Ohm 10 % 1/4 or 1/8 W resistors are added to the IEC signal lines (ATN, CLOCK and DATA) for security reasons to protect your C64. Do not build SD2IEC without this resistors!
+
+##CR2032 battery on the Tiny RTC module with AT24CP32 EEPROM
+
+To use non-rechargerable CR2032 battery, remove R5. D1, R4 and R6. Then replace R6 with jumper wire (see Tiny_RTC.png). If you are unsure of your soldering skills, remove at least D1 and R4.
+
+##Power requirements for the Arduino SD2IEC LCD
+
+Via onboard USB port
+Working voltage 5 V 10%
+Current 65-100 mA max.
+
+Via power jack connector
+Working voltage 7-12 V max 
+Current 100 mA max
+
+NOTICE:
+External (non-USB) power can come either from an AC-to-DC adapter (wall-wart) or battery. The adapter can be connected by plugging a 2.1mm center-positive plug into the board's power jack. Leads from a battery can be inserted in the Gnd and Vin pin headers of the Arduino POWER connector.
+
+NOTICE 2:
+Powering from C64 is possible from cassete port via adapter for connecting PC PS2 or USB keyboard (USB_power.png).
+
+
+##SD2IEC development environment for Windows XP and above
+(from:http://siz.hu/en/content/sd2iec-development-environment-windows)
+ 
+I wanted to compile my own SD2IEC firmware version for a long time. I started to create my environment several times but failed. Then came a bit stronger motivation: IEC-ATA made his SD1551 which is an SD2IEC (hardware) based device that connects to the Commodore 264 series (C16, C116, plus/4 and the rarities/prototypes: C232, C264, V364) expansion port and uses the TCBM protocol of the 1551 with SD card bases storage but with custome firmware.
+ 
+My idea was that as the SD2IEC firmware already supports different hardware variants and bus implementations (Commodore serial, DophinDOS parallel, IEEE-488) we could easily add support for TCBM too and use all the other (like SD-card handling, filesystem, disk image and file handling, firmware update) functions from the original SD2IEC software. Of course I jumped on it but as soon as I was able to compile and flash firmware for my SD2IEC my enhusiasm faded as other projects got in focus. (I didn't give up but it got back beside the other numerous things :) )
+ 
+So: this post was created to document what do you need to compile the firmware.
+ 
+Software requirements
+ 
+I found that the compilation does not work with the generally suggested WinAVR package. (At least I wasn't able to make it work) because it's heavily based on the gcc toolchain with make avr-gcc and perl. I've installed Ubuntu Linux to try out the compilation and of course everything worked perfectly for the first try after installing the avr packages. But I wanted to use Windows.
+ 
+What you need to download and Install:
+ 
+Git: SD2IEC firmware is in a Git repository. This is required to download the source code.
+MinGW/MSys: *nix shell console and development toolkit support for Windows.
+AVR GNU toolchain: AVR specific cross-compiler tools, C, C++, assembler and other compilers, linker and others.
+Strawberry PERL: unfortunately we need a separate PERL because MSys has version 5.8 (at least the one I installed had that one) but SD2IEC compilation requires version 5.10 at least. Searching the Internet I found Strawberry PERL as the recommended one so I've decided to use this one..
+AVRDude: not for the compilation itself but for flashing the compiled firmware to the AVR. (SD2IEC has a make target for flashing)
+I've downloaded the most recent version of all the tools but it should work with slightly older and newer versions too..
+ 
+Installation
+ 
+Foreword: if an installer wants to add something to the PATH we should let it do it. Otherwise there is a good chance that the build will fail. 
+ 
+git
+ 
+We can download it from https://git-scm.com/downloads We just need to install it, nothing extra.
+ 
+Strawberry PERL
+ 
+We can download it from http://strawberryperl.com/download/5.28.1.1/strawberry-perl-5.28.1.1-32bit.msi We just need to install this one too, nothing extra.
+ 
+MinGW/MSys
+ 
+We can download from https://sourceforge.net/projects/mingw/files/MSYS/ mingw-get-setup which is recommended on the top of the page. This is an installer. We have to select what we need to be installed. It will download and install the selected items only. VERY slow.
+It offers several installation possibilites (pre-selected packages – Basic Setup) or we can select what we need (All Packages). I didn't bother too much and selected 3 of basic ones:
+ 
+mingw-developer-toolkit
+mingw32-base
+and msys-base
+ 
+AVR GNU toolchain
+ 
+We can download from http://ww1.microchip.com/downloads/en/DeviceDoc/avr8-gnu-toolchain-3.6.2.1759-win32.any.x86.zip the Atmel AVR 8-bit Toolchain and install it.
+ 
+Setup
+ 
+Note1: The AVR GNU toolchain unpack .zip file in C:\ and rename avr8-gnu-toolchain-win32_x86 in WinAVR or somthing similar if Win AVR already exist.
+ 
+
+Note2: The MinGW and Strawberry Perl instal in sugested directories eg. C:\MinGW and C:\Strawberry
+ 
+
+What we need to be in PATH and work from Windows command line (CMD) too:
+ 
+C:\WinAVR\bin;C:\WinAVR\utils\bin;C:\Strawberry\c\bin;C:\Strawberry\perl\site\bin;C:\Strawberry\perl\bin
+ 
+To check is all corect we can type in cmd for:
+ 
+perl: use command perl -v to check
+ 
+avr-gcc: use command avr-gcc -v to check
+ 
+If we got Bad command or filename for one or both suite, chec the environment variables in the Path section.
+ 
+https://www.java.com/en/download/help/path.xml
+ 
+
+If we got version information of these suites, rename:
+ 
+
+libstdc++-6.dll in C:\MinGW\bin\libstdc++-6.dll rename in libstdc++-6.dll.old
+ 
+perl.exe in C:\MinGW\bin;C:\MinGW\msys\1.0\bin\perl.exe rename in perl.exe.old
+ 
+
+Now we can start MSys-t (for example c:\mingw\msys\1.0\msys.bat), from shortcut, not from cmd!
+ 
+IMPORTANT: in MSys the root directory (/) is the directory of MSys. The Windows drives can be accessed under the path /<drive letter without colon>. For exmple the path of C:\Work will be /c/Work.
+ 
+We must setup Strawberry to be used instead of the built-in one (but we need to install that to as it installs some required tools):
+ 
+Create a symlink for Strawberry: (ln -s <Strawberry perl binary path> perl.exe, for example ln -s /c/Strawberry/perl/bin/perl.exe)
+ 
+Check with perl -v if it's the same as from Windows command line.
+Check with avr-gcc -v if it's the same as from Windows command line.
+ 
+If all OK, now we have a complete development environment.
+ 
+Build
+ 
+In MSys shell create a git working directory. For example:
+ 
+cd /c/Work
+mkdir git
+cd git
+Check out (download) the current SD2IEC version:
+ 
+git clone http://sd2iec.de/sd2iec.git
+Let's try our luck:
+ 
+cd sd2iec
+make CONFIG=configs/config-larsp
+(or any other configuration except example. My device uses this hardware variant so I've used this one).
+ 
+Later we can copy one of the configurations in the sd2iec main directory with the name config and then we can use
+ 
+make
+only to start build.
+ 
+If you use a smaller AVR (my device has a 644p) we probably need to disable some parts in the config as the current software can be quite big and does not fit in the small AVRs.
+ 
+If you create your own hardware most probably you need to create your own hardware variant config too.
+
+##How to upload sd2iec.hex into Arduino?
+
+The simplest way is to use the Xloader (required .Net Framework 3.5 or later).
+http://www.hobbytronics.co.uk/arduino-xloader/
+Xloader.jpg
+
+Another way is the AVRdudess, for settings look avrdudess.jpg (COM port may be different on your computer).
+https://blog.zakkemble.net/avrdudess-a-gui-for-avrdude/
+avrdudess.jpg
+
+or from command prompt (write correct COM port for your Arduino) in the avrdude directory:
+
+avrdude -c wiring -p m2560 -P COM17 -b 115200 -D -U flash:w:"C:\Work\git\sd2iec\obj-m2560\sd2iec.hex":a 
+
+Or simply copy above command in txt file vith.bat extension, eg. Runme.bat and save then in directory with the avrdude and type only Runme 
+https://www.nongnu.org/avrdude/
+
+##Credits
+
+Ingo Korb and Lars Pontoppidan for MMC/SD2IEC project
+Draco and CapFuture1975 for SD2IEC LCD project
+Lars Wadefalk for his Mega 2560 SD2IEC and UNO2IEC project
+Imre Széll for a portable Windows version of MinGW prepared for SD2IEC
+http://siz.hu/en/content/sd2iec-development-environment-windows
+Members of embdev.net forum for LCD_NEW library
+https://embdev.net/topic/353004
+Sven Oliver Moll for new start of the project
+Members of AVR freaks forum for ideas and ADC tutorial
+https://www.avrfreaks.net/forum/tut-c-newbies-guide-avr-adc?page=all
+
+
+and everyone else who contributed to the improvements of the SD2IEC project.
+
+##License
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; version 2 of the License only.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
