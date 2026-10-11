@@ -312,20 +312,3 @@ uint8_t set_ok_message(buffer_t *buf) {
   set_error(0);
   return 0;
 }
-
-/**
- * set_close_status - update the error channel after a successful CLOSE
- * @secondary: secondary address that was closed
- *
- * Clear the error channel to 00,OK for channels between 2 and 15 unless
- * there is a REL-related error set. Matches FD2000 behaviour (D9FB).
- */
-void set_close_status(uint8_t secondary) {
-  if (secondary < 2 ||
-      current_error == ERROR_RECORD_MISSING ||
-      current_error == ERROR_RECORD_OVERFLOW) {
-    return;
-  }
-
-  set_error(ERROR_OK);
-}
