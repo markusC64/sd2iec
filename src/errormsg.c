@@ -226,6 +226,10 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
       msg = appendbool(msg, 0, globalflags & D64_WITH_HIDDEN);
 
       *msg++ = ':';
+      *msg++ = 'C';
+      msg = appendbool(msg, 0, !(globalflags & CLOSE_KEEPS_ERROR));
+
+      *msg++ = ':';
       *msg++ = 'R';
       ustrcpy(msg, rom_filename);
       msg += ustrlen(rom_filename);
@@ -319,9 +323,11 @@ uint8_t set_ok_message(buffer_t *buf) {
  *
  * Clear the error channel to 00,OK for channels between 2 and 15 unless
  * there is a REL-related error set. Matches FD2000 behaviour (D9FB).
+ * With XC- (CLOSE_KEEPS_ERROR) the error channel is left alone (1541).
  */
 void set_close_status(uint8_t secondary) {
-  if (secondary < 2 ||
+  if ((globalflags & CLOSE_KEEPS_ERROR) ||
+      secondary < 2 ||
       current_error == ERROR_RECORD_MISSING ||
       current_error == ERROR_RECORD_OVERFLOW) {
     return;
