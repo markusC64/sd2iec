@@ -3427,11 +3427,14 @@ static uint8_t cvt_to_geos(uint8_t part, struct d64dh *dh, buffer_t *buf) {
 /* Set the bytes after the last used one of a sector to 0 */
 static uint8_t cvt_zero_padding(uint8_t part, uint8_t t, uint8_t s, uint8_t used) {
   uint16_t pos = used + 1;
+  uint16_t rest;
   uint8_t len;
 
   memset(ops_scratch, 0, sizeof(ops_scratch));
   while (pos < 256) {
-    len = 256 - pos > sizeof(ops_scratch) ? sizeof(ops_scratch) : 256 - pos;
+    /* rest is unsigned: 256 - pos alone is a signed int on 32 bit targets */
+    rest = 256 - pos;
+    len = rest > sizeof(ops_scratch) ? sizeof(ops_scratch) : rest;
     if (image_write(part, sector_offset(part, t, s) + pos, ops_scratch, len, 0))
       return 1;
     pos += len;
