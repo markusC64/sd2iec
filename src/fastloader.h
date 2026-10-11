@@ -117,6 +117,8 @@ extern uint8_t (*fast_get_byte)(void);
 uint8_t check_keys(void);
 bool bus_sleep(uint8_t);
 
+#ifdef CONFIG_HAVE_IEC
+
 /* per-loader functions, located in separate fl-*.c files */
 bool load_turbodisk(uint8_t);
 bool load_fc3(uint8_t freezed);
@@ -177,4 +179,6 @@ static inline void parallel_clear_rxflag(void) {}
 # endif
 
 #endif // not assembler
+#endif // CONFIG_HAVE_IEC
+
 #endif

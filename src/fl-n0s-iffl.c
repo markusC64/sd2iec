@@ -101,6 +101,7 @@ bool scan_n0s_iffl(UNUSED_PARAMETER) {
     sector_count++;
   }
   free_buffer(buf);
+  
   return true;
 }
 
