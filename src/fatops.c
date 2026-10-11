@@ -1107,6 +1107,7 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags
     if (record != RECSEL_NONE) {
       set_error(ERROR_FILE_TYPE_MISMATCH);
       f_close(&buf->pvt.fat.fh);
+      buf->read = 0;             /* not open: the caller frees it */
       unstick_buffer(buf);
       return;
     }
@@ -1141,6 +1142,7 @@ void fat_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags
   if (record != RECSEL_NONE) {
     if (fat_cvt_seek(buf, record, 0)) {
       f_close(&buf->pvt.fat.fh);
+      buf->read = 0;             /* not open: the caller frees it */
       unstick_buffer(buf);
     }
     return;

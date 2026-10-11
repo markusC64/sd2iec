@@ -2110,10 +2110,13 @@ static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_
     d64_open_cvt(path->part, dent, buf);
 
     /* A record selected at the open: as P on the channel. If that fails, */
-    /* so does the open (error 50/64 is set), the buffer is not kept.     */
+    /* so does the open (error 50/64 is set): the buffer is not open, so  */
+    /* the caller frees it (read = 0, see free_unopened_buffer).          */
     if ((flags & OPENFLAG_RECORD) && buf->sticky &&
-        d64_cvt_seek(buf, flags & OPENFLAG_RECNUM, 0))
+        d64_cvt_seek(buf, flags & OPENFLAG_RECNUM, 0)) {
+      buf->read = 0;
       unstick_buffer(buf);
+    }
     return;
   }
 #else
@@ -3650,21 +3653,23 @@ static uint8_t cvt_from_geos(uint8_t part, struct d64dh *dh, cbmdirent_t *dent, 
  *
  * The CVT has been written as a normal PRG file. When it is complete, it
  * is converted into the GEOS file. If that is not possible, the PRG file
- * stays as it is and the error channel says why.
+ * stays as it is and the error channel says why: That is a failed close
+ * (return 1), so the close does not reset the error channel to 00,OK.
  */
 static uint8_t d64_cvt_write_cleanup(buffer_t *buf) {
   struct d64dh dh = buf->pvt.d64.dh;
   uint8_t part = buf->pvt.d64.part;
+  uint8_t res;
 
   if (d64_write_finish(buf))
     return 1;
 
-  cvt_to_geos(part, &dh, buf);
+  res = cvt_to_geos(part, &dh, buf);
 
   buf->cleanup = callback_dummy;
   free_buffer(buf);
 
-  return 0;
+  return res;
 }
 #endif /* CONFIG_CVT */
 
