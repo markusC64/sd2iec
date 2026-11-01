@@ -1983,6 +1983,31 @@ void fat_write_sector(buffer_t *buf, uint8_t part, uint8_t track, uint8_t sector
 static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname);
 #endif
 
+#ifdef CONFIG_XEB
+/* Set by fat_convert while it renames: EC:dir=TMPn in xe0..xe4 */
+static uint8_t ec_rename;
+
+/**
+ * ec_dirname - xe5 form of a directory name for EC in xe0..xe4
+ * @dent   : the entry that is renamed
+ * @newname: the new name
+ *
+ * A directory can't be an x00 file. If EC converts it to a name FAT
+ * can't hold in this mode, it gets the xe5 form in ops_scratch instead,
+ * but only if XEB+ reads it back: it must have a {. Returns 1 then.
+ * R, MD and N: stay classic.
+ */
+static uint8_t ec_dirname(cbmdirent_t *dent, uint8_t *newname) {
+  if (!ec_rename || (dent->typeflags & TYPE_MASK) != TYPE_DIR ||
+      !(brace_mode & XEB_READ))
+    return 0;
+  petscii_to_fat((const char *)newname, (char *)ops_scratch, 40);
+  return ustrchr(ops_scratch, '{') != NULL;
+}
+#else
+#  define ec_dirname(d,n) 0
+#endif
+
 void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   uint8_t *ext;
   FRESULT res;
@@ -2099,7 +2124,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       /* Keep type extension */
       ustrcpy(ops_scratch, newname);
       build_name(ops_scratch, dent->typeflags & TYPE_MASK, 1);
-      if (!*ops_scratch)
+      if (!*ops_scratch && !ec_dirname(dent, newname))
       {
          /* Not a FAT name: only an x00 file can have it, convert makes one. */
          /* Not for a directory, convert would just come back here.          */
@@ -2120,7 +2145,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     default:
       ustrcpy(ops_scratch, newname);
       build_name(ops_scratch, 0, 1);
-      if (!*ops_scratch)
+      if (!*ops_scratch && !ec_dirname(dent, newname))
       {
          /* Not a FAT name: only an x00 file can have it, convert makes one. */
          /* Not for a directory, convert would just come back here.          */
@@ -2704,7 +2729,13 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
   /* just renamed. fat_rename does not come back for it.             */
   if (!needs_copy || (dent->typeflags & TYPE_MASK) == TYPE_DIR) {
     /* Plain rename is sufficient */
+#ifdef CONFIG_XEB
+    ec_rename = 1;
     fat_rename(path, dent, target);
+    ec_rename = 0;
+#else
+    fat_rename(path, dent, target);
+#endif
   } else {
     FIL destination;
     UINT read_count, write_count;
