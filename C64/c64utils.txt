@@ -1,0 +1,57 @@
+Programs on the c64utils.d64 file
+
+Name: ID8-9
+Size: 1 block
+Drive ID: 8
+Author: ?
+Description:
+Utility to change the SD2IEC drive ID from 8 to 9. 
+----------------
+Name: ID9-8
+Size: 1 block
+Drive ID: 9
+Author: ?
+Description:
+Utility to change the SD2IEC drive ID from 9 to 8. 
+----------------
+Name: SDINFO
+Size: 1 block 
+Drive ID: 8
+Author: ?
+Description:
+Utility for open and read the error channel from SD2IEC.
+----------------
+Name: SD2IECSNOOP ver 0.3
+Size: 15 blocks
+Drive ID: 8, but is possible to change in line 1010 in range 4 to 30
+Author: exrom
+Description:
+Utility for change drive ID, view error channel and various SD2IEC data. Also a loader for fibr file brovser.
+----------------
+Name: FIBR
+Size: 41 blocks
+Author: p1x3l.net 
+Drive ID: Any
+Description: 
+Powerfull file brovser.
+----------------
+Name: FB
+Size: 9 blocks
+Drive ID: Any
+Author:
+Description:
+Simple, but effective file browser.
+-----------
+Name: CONFIGURATOR ver. 0.3
+Size: 53 blocks
+Drive ID: Any
+Author: B&F
+Description:
+Utility to view SD2IEC information and set RTC date and time, Drive ID and contrast (only for  ST7036 displays).
+-----------
+Name: LCDDEMO version 0.4
+Size: 46 blocks
+Drive ID: Any
+Author: B&F
+Description:
+Demo program to show usage the new LCD commands.

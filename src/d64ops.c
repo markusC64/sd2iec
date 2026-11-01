@@ -2107,6 +2107,7 @@ static void d64_open_cvt(uint8_t part, cbmdirent_t *dent, buffer_t *buf) {
 static void d64_open_read(path_t *path, cbmdirent_t *dent, buffer_t *buf, uint8_t flags) {
   /* Read the directory entry of the file */
 #ifdef CONFIG_LCD_DISPLAY
+  ready_msg_only_once = 0; //alow ready msg after loading file - by Poldi
   DS_LOAD((char *) dent->name);
 #endif
 
@@ -3070,7 +3071,6 @@ static void d64_format(path_t *path, uint8_t *name, uint8_t *id) {
    if ((partition[part].imagetype  & D64_TYPE_MASK) == D64_TYPE_D71)
     if (d64_format_track(part, buf, 53))
       return;
-
     /* clear the entire directory track */
     /* This is not accurate, but I do not care. */
     if (d64_format_track(part, buf, get_param(part, DIR_TRACK)))

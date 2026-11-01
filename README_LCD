@@ -1,4 +1,3 @@
-
 Some project history
 ====================
 
@@ -12,20 +11,39 @@ This software was tested on an ATMEGA1284p microcontroller with a ST7036 based
 DOGM162 module and another HD44780 based module (exact type unkonwn).
 
 
-New files added on top of sd2iec 0.10.3
-=======================================
+5.10.2021 Poldi added full support for the Arduino Mega 2560 and
+LCD keypad shield (support for HD44780 displays where R/W pin
+is tied to GND. Also added new command XL to get information
+about LCD type is build in the yours SD2IEC LCD.
+
+14.10.2021 Poldi added new coommand T-RL.
+For more information see notes below.
+
+25.11.2021 Poldi added new coommand XB that shows the boot message.
+
+4.1.2022 Poldi added table of available values with description for the XTC command.
+
+14.1.2023 Poldi rename conflictong XL command in the XTL command,
+--------------------------------------
+New files added on top of sd2iec 1.0.1
+=======================================1
 
 lcd.c - low level LCD driver - initial version from draco, andi6510 added lcd auto detection and st7036 support
 lcd.h - low level LCD driver interface
 display_lcd.c - high level LCD functions - initial version from draco, andi6510 added contrast setting for st7036
 display_lcd.h - high level LCD functions interface
-config-larspLCD - configuration for LarsP hardware with LCD attached
+config-larsp - configuration for LarsP hardware with LCD attached
 config-evo2 - configuration for hardware sold as "evo2", a slightly modified sw2
+config-Arduino-lcd
+config-Arduino-lcd-s
+config-sw1
+config-sw2
+
 README_LCD - this file
 
 
 
-Modified files of sd2iec 0.10.3
+Modified files of sd2iec 1.0.1
 ===============================
 
 buffer.c - display "READY" when the last buffer has been closed - seems more a hack and should be replaced with a proper solution
@@ -67,6 +85,40 @@ Example 3 - define a special character with a "heart" (line 2) and print it 3 ti
 3 print#15,"XT1"+CHR$(8)+CHR$(8)+CHR$(8)
 4 CLOSE15
 
+Other valuses for XTC command
+-----------------------------
+
+The XTC command set LCD specific instructions as shown in the table below:
+
+Value   I| Instruction
+-----------------------------------------------------------------
+1        | Clear Screen
+-----------------------------------------------------------------
+2        | Home (move cursor to top/left character position)
+-----------------------------------------------------------------
+8       |  Blank the display (without clearing)
+-----------------------------------------------------------------
+12      |  Restore the display (with cursor hidden)
+-----------------------------------------------------------------
+12      |  Make cursor invisible
+-----------------------------------------------------------------
+14      |  Turn on visible underline cursor
+-----------------------------------------------------------------
+15      |  Turn on visible blinking-block cursor
+-----------------------------------------------------------------
+16      |  Move cursor one character left
+-----------------------------------------------------------------
+20      |  Move cursor one character right
+-----------------------------------------------------------------
+24      | Scroll display one character left (all lines)
+-----------------------------------------------------------------
+28      | Scroll display one character right (all lines)
+-----------------------------------------------------------------
+64+addr | Set pointer in character-generator RAM (CG RAM address) 
+-----------------------------------------------------------------
+128+sddr| Set cursor position (DDRAM address)
+
+
 
 Display About Message
 ----------------------
@@ -85,6 +137,27 @@ The XG command shows the greetings and credits:
 Example:
 
 OPEN15,8,15,"XG"
+
+Display Boot Message
+--------------------
+
+The XB command shows the boot message:
+
+Example:
+
+OPEN15,8,15,"XB"
+
+
+
+Display current directory
+-------------------------
+
+The XTR command shows the current directory or mounted image:
+
+Example:
+
+OPEN15,8,15,"XTR"
+
 
 
 Undocumented experimental feature
@@ -115,7 +188,40 @@ OPEN15,8,15,"XC 40"
 Note:
 Once contrast is adjusted properly the setting can be saved with the XW command!
 
+Display LCD type
+----------------------
 
+The XTL command shows the LCD type (HD44780 or ST7036) on the given SD2IEC LCD:
+
+Example:
+
+OPEN15,8,15,"XTL"
+
+Also sent this information via error channel to C64: 
+95 NO_LCD
+96 HD44780
+97 ST7036
+
+Display current date&time on the LCD
+(only if RTC module is present)
+------------------------------------
+
+If your hardware features RTC and LCD support, the command
+T-RL display current date and time in ISO 8601 format on the
+LCD screen for aprox 8 seconds.
+
+
+Example:
+
+OPEN15,8,15,"T-RL"
+
+Note:
+
+If the RTC isn't present, command return:
+30,SYNTAX ERROR,00,00
+
+If the RTC is present but not set correctly T-RL will return:
+31,SYNTAX ERROR,00,00.
 
 LCD Hardware
 ============
