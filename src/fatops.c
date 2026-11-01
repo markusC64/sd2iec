@@ -67,6 +67,9 @@ typedef enum { EXT_UNKNOWN, EXT_IS_X00, EXT_IS_TYPE
 } exttype_t;
 
 uint8_t file_extension_mode;
+#ifdef CONFIG_XEB
+uint8_t brace_mode;
+#endif
 
 /* ------------------------------------------------------------------------- */
 /*  Utility functions                                                        */
@@ -125,11 +128,20 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
         fat[1] = '}';
      }
 
+    /* XEB1: every name gets a { so XEB+ recognizes it. Keep room for an */
+    /* empty {} in front, it is dropped at the end if an escape came.    */
+#ifdef CONFIG_XEB
+    bool mark = !match && (brace_mode & XEB_WRITE_MASK);
+#else
+    const bool mark = false;
+#endif
+    bool escaped = false;
+
     // clear output string
     const char *hex = "0123456789ABCDEF";
     bool first = true;
     bool escape = false;
-    i = match ? 2 : 0;
+    i = (match || mark) ? 2 : 0;
     while(*pet) {
         unsigned char p = *(unsigned char *)(pet++);
         if (p == 160) {
@@ -148,6 +160,7 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
             if (!escape) {
                 fat[i++] = '{';
                 escape = true;
+                escaped = true;
             }
             fat[i++] = hex[((uint8_t)p) >> 4];
             fat[i++] = hex[p & 15];
@@ -168,6 +181,15 @@ void petscii_to_fat(const char *pet, char *fat, int maxlen)
         escape = false;
     }
     fat[i] = 0;
+
+    if (mark) {
+        if (escaped) {
+            memmove(fat, fat + 2, i - 1);
+        } else {
+            fat[0] = '{';
+            fat[1] = '}';
+        }
+    }
     
     if (strlen(fat) > 3)
     {
@@ -1644,17 +1666,27 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
   /* Copy name */
   ustrcpy(dent->pvt.fat.realname, finfo.fname);
 
-  unsigned int maxLen = file_extension_mode == 5 ? 44 : CBM_NAME_LENGTH+4;  
+  /* XEB+: in xe0..xe4 a name with a { is an xe5 name. A classic name   */
+  /* can not have one, { is no valid FAT character for it.              */
+#ifdef CONFIG_XEB
+  uint8_t braced = file_extension_mode != 5 && (brace_mode & XEB_READ) &&
+                   ustrchr(finfo.lfn[0] ? finfo.lfn : finfo.fname, '{');
+#else
+  const uint8_t braced = 0;
+#endif
+  uint8_t xe5name = file_extension_mode == 5 || braced;
+
+  unsigned int maxLen = xe5name ? 44 : CBM_NAME_LENGTH+4;
 
   if (!finfo.lfn[0] || ustrlen(finfo.lfn) > maxLen) {
     nameptr = finfo.fname;
-    if(file_extension_mode == 5) {
+    if (xe5name) {
        fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
     }
   } else {
     /* Convert only LFNs to PETSCII, 8.3 are always upper-case */
     nameptr = finfo.lfn;
-    if(file_extension_mode == 5) {
+    if (xe5name) {
        fat_to_petscii((char*) nameptr, false, (char*) nameptr, 20, true);
     }
     else
@@ -1684,14 +1716,14 @@ int8_t fat_readdir(dh_t *dh, cbmdirent_t *dent) {
         dent->opstype = OPSTYPE_FAT_X00;
       }
 
-    } else if (ext == EXT_IS_TYPE && (globalflags & EXTENSION_HIDING)) {
+    } else if (ext == EXT_IS_TYPE && ((globalflags & EXTENSION_HIDING) || braced)) {
       /* Type extension */
       typechar = *ptr;
       uint8_t i = ustrlen(nameptr)-4;
       nameptr[i] = 0;
 
 #ifdef CONFIG_CVT
-    } else if (ext == EXT_IS_CVT && (globalflags & EXTENSION_HIDING)) {
+    } else if (ext == EXT_IS_CVT && ((globalflags & EXTENSION_HIDING) || braced)) {
       /* Like the type extensions, a PRG until the content says otherwise */
       typechar = 'P';
       nameptr[ustrlen(nameptr)-4] = 0;
