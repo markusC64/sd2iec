@@ -95,6 +95,76 @@ Supported commands:
   EH:foo,ba changes header to 'foo' and id to 'ba' - a path must NOT be given.
   XH:foo,ba changes header to 'foo' and id to 'ba'
 
+- ET: Change file type
+  ET:foo,t  changes the type of the file foo to t, where t is one of
+            P (PRG), S (SEQ), U (USR) or V (GEOS CVT, see "GEOS files
+            and CVT" below). Paths and wildcards are allowed in foo.
+
+  In a disk image only the type in the directory entry is changed, all
+  other flags (closed, locked) are kept. V is not possible there and
+  results in 31,SYNTAX ERROR - in an image a GEOS file is converted
+  with EC (see below).
+
+  On FAT the file name is rebuilt for the new type according to the
+  current extension mode (see XE). An x00 file stays an x00 file and
+  gets the matching extension (e.g. FOO.P00 becomes FOO.S00). ET:foo,V
+  renames the file to foo.CVT, so it is read as a CVT from then on; this
+  fails with 64,FILE TYPE MISMATCH for an x00 file because the header is
+  in the way. ET:foo,P on a CVT does the opposite: the file becomes a
+  normal PRG file that contains the CVT.
+
+  A shifted letter (e.g. shifted P, character code 208) means the type
+  inside a CVT on FAT, i.e. the type the C64 sees in the directory: the
+  type in the signature block of the CVT is changed and the file stays
+  a CVT. This is not possible for a REL file in a CVT (64,FILE TYPE
+  MISMATCH). For all other files a shifted letter is the same as the
+  unshifted one.
+
+- EC: Convert files
+  EC is meant for programs that convert all files of a directory tree
+  from one extension mode to another (see XE), e.g. from xe2 to xe5.
+
+  EC:foo         renames the file foo to TMP<n>, using the smallest number
+                 that is not in use yet. The new name is reported via the
+                 error channel, e.g. "80,TMP1,0,0". An x00 file loses its
+                 header in this step (it is copied and deleted). Not
+                 possible in modes xe1 and xe2 (31,SYNTAX ERROR), as the
+                 temporary file would get an x00 header again - use xe4
+                 for this step instead.
+  EC:foo=TMP1    renames TMP1 back to foo, in the form the current
+                 extension mode requires. If that form is an x00 file,
+                 the file is copied with a new header and the source is
+                 deleted. foo must not exist (63,FILE EXISTS).
+
+  How a program on the C64 converts a whole directory tree with these
+  two commands is described in "Converting between extension modes"
+  below.
+
+  In a disk image (only if compiled with CVT support):
+  EC:foo,C       converts the GEOS file foo into a CVT that is stored as a
+                 PRG file of the same name.
+  EC:foo,G       converts a CVT stored as PRG file back into the GEOS file.
+                 A CVT with additional sectors behind the last VLIR record
+                 is regarded as damaged and is not converted.
+  Both conversions are done in place in the image, only one or two
+  sectors are allocated or freed. On FAT, ,C and ,G are not possible
+  (31,SYNTAX ERROR), a CVT file on FAT already is that form.
+
+- E?: File information (optional, CONFIG_EINFO)
+  E?:foo    reports what the file foo physically is on the medium via
+            the error channel, as message 81.
+  On FAT the result is "81,<kind>:<LFN>[:<8.3>][:NK|:N/A],0,0" with
+  <kind> one of PRG/SEQ/USR/REL (type extension), NOTYPE (no extension,
+  i.e. a PRG), X00, DIR, CVT SEQ/CVT VLIR/CVT REL followed by V1 or V2
+  (GeoConvert98 format V2) and I if there is an INFO block, or CVT? for
+  a .CVT file that is not a valid CVT. The 8.3 name is only shown if the
+  file has no long name or if it differs. NK means the name is not the
+  one sd2iec would create for this file in the current mode, N/A that
+  this can't be said (x00 files, and CVT files with XEC-).
+  In a disk image the result is "81,CBM,0,0", "81,GEOS SEQ,0,0" or
+  "81,GEOS VLIR,0,0".
+  Builds with CONFIG_EINFO_WITHOUT_NAMES only report the kind.
+
 - CD/MD/RD:
   Subdirectory access is compatible to the syntax used by the CMD drives,
   although drive/partition numbers are completely ignored.
@@ -142,6 +212,15 @@ Supported commands:
 
   Copying REL files should work, but isn't tested well. Mixing REL and
   non-REL files in an append operation isn't supported.
+
+  With CVT support, CCVT[partition][path]:targetname=sourcename copies
+  a file as a CVT: the source is read as if opened with ,V and the
+  target is written as if opened with ,V (see "GEOS files and CVT"
+  below). This copies GEOS files between disk images and FAT. A real
+  drive only looks at the C and treats CCVT as a normal copy.
+  If a VLIR record was selected with P on channel 15 before (see P),
+  a normal copy copies only that record of the first source file;
+  CCVT always copies whole files and drops the selection.
 
 - D
   Direct sector access, this is a command group introduced by sd2iec.
@@ -238,6 +317,26 @@ Supported commands:
   which will seek to the 0-based offset hi*2^24+midhi*65536+256*midlo+lo
   in the file. If you send less than four bytes for the offset, the
   missing bytes are assumed to be zero.
+
+  With CVT support, P is also used to read single records of GEOS VLIR
+  files (see "GEOS files and CVT" below):
+
+  - On a channel opened with ,V an offset below 128 selects a VLIR
+    record (0-126): from then on the channel delivers only the data of
+    that record, the last byte with EOI. Another P selects another
+    record. Offsets from 128 on are positions in the file as above
+    (on FAT this ends the record mode; in a disk image a VLIR file has
+    no such positions, 31,SYNTAX ERROR).
+  - "P"+chr$(15)+chr$(record) on the command channel selects a record
+    for the next file that is opened for reading (or the next copy):
+    that open delivers only the data of the record, as if the file was
+    opened with ,V and positioned to the record. The selection is used
+    up by that open; any other command, and any open for writing,
+    drops it.
+
+  In both cases 64,FILE TYPE MISMATCH means the file is no VLIR file and
+  50,RECORD NOT PRESENT that the record does not exist. After such an
+  error the channel delivers a single CR.
 
 - N:
   This command will be ignored for DNP images unless the current directory
@@ -373,7 +472,9 @@ Supported commands:
              "NAME{A0}". File names matching a reserved DOS name (CON,
              PRN, ...) are prefixed with an empty "{}". The encoding is
              transparent: directory listings and file access use the
-             decoded PETSCII name.
+             decoded PETSCII name. In mode 5 file names on FAT are
+             matched case-sensitively, i.e. with the same file name
+             semantics as the Ultimate 64 and 1541 Ultimate.
 
              For compatibility with existing programs that write D64 files,
              PRG files that have D64, D41, D71, D81, DNP or M2I as an extension
@@ -391,17 +492,58 @@ Supported commands:
   - XEL/XEU  Lock (XEL) / unlock (XEU) the file extension settings.
              While the lock is active, XEnum and XE+/XE- are silently
              ignored, so software that tries to change the extension
-             mode behind your back cannot alter it (XET is not
-             affected). The lock state can be saved in the EEPROM using
-             XW. In the extended status (read the error channel after
-             sending an X command) the +/- indicator following the
-             extension mode is replaced by '<' while the lock is active.
+             mode behind your back cannot alter it (XET, XEB and XEC
+             are not affected). The lock state can be saved in the
+             EEPROM using XW. In the extended status (read the error
+             channel after sending an X command) the +/- indicator
+             following the extension mode is replaced by '<' while the
+             lock is active.
 
   - XET+/XET- Enable/disable strict file type checking. If enabled,
              opening an existing file with an explicit file type (e.g.
              "NAME,S") fails with 64,FILE TYPE MISMATCH if the actual
              type of the file differs. This flag can be saved in the
              EEPROM using XW, the default value is disabled (-).
+
+  - XEB+/XEB-, XEB0/XEB1 (optional, CONFIG_XEB)
+             Braces in mode 5 file names, for switching between mode 5
+             and the classic modes 0-4 without losing the file names.
+             Like XE, the +/- part controls how names are read and the
+             number how they are written:
+
+             XEB+/XEB- In modes 0-4, a FAT name that contains a "{" is
+                       read as a mode 5 name: the escapes are decoded
+                       and a type extension is evaluated and removed,
+                       whether extension hiding is enabled or not. All
+                       other names are read as before. The classic modes
+                       never write a "{" (it is no valid character for
+                       them), so their own files are not affected.
+                       Mode 5 always decodes, there XEB+/- has no effect.
+             XEB1/XEB0 In mode 5, XEB1 puts an empty "{}" in front of
+                       every name that contains no "{" otherwise, so XEB+
+                       recognizes all files written in mode 5, e.g. FOO
+                       is written as "{}FOO.PRG". This also applies to
+                       directories, images created with N: and the mode 5
+                       form of CVT names in the classic modes. XEB1 also
+                       sets XEB+. Mode 5 reads names with and without
+                       the "{}" the same way, and so do the Ultimate 64
+                       and 1541 Ultimate.
+
+             Files written in mode 5 before XEB1 was set don't have the
+             marker. In mode 5 with XEB1, EC:name followed by
+             EC:name=TMPn adds it (see EC), and so does overwriting the
+             file with "@".
+
+             These settings are not affected by XEL and can be saved in
+             the EEPROM using XW, the default is XEB0 and XEB-. The
+             extended status shows them as EBnn+ or EBnn-.
+
+  - XEC+/XEC- (only with CVT support)
+             CVT files on FAT are listed with the name of the file on
+             FAT (XEC+) or with the name inside the CVT (XEC-). With
+             XEC-, renaming a CVT changes the name inside it, the FAT
+             file is renamed accordingly if possible. This flag can be
+             saved in the EEPROM using XW, the default is XEC-.
 
   - XInum    Switches the display mode for mountables files (i.e. disk images
              and M2I). num can be 0, in which case the file will be shown
@@ -429,6 +571,14 @@ Supported commands:
              If disabled, any characters after a * will be ignored.
              This flag can be saved in the EEPROM using XW, the default value
              is enabled (+).
+
+  - XP+/XP-  Enable/disable comparing file names by PETSCII equivalence
+             classes. If enabled, character codes that show the same
+             character on the C64 are treated as equal when file names
+             are matched: 192-223 are the same as 96-127, 224-254 the
+             same as 160-190 and 255 the same as 126. This flag can be
+             saved in the EEPROM using XW, the default value is
+             disabled (-).
 
   - XDdrv=val Configure drives.  On ATA-based units or units with multiple
              drive types, this command can be used to enable or reorder
@@ -458,7 +608,13 @@ Supported commands:
 
   - X        X without any following characters reports the current state
              of all extended parameters via the error channel, similiar
-             to DolphinDOS. Example result: "03,J-:C152:E01+:B+:*+,08,00"
+             to DolphinDOS. Example result:
+               "03,E01+:*+:ET-:EB00-:EC-:P-:I00:N-:H-:R,08,00"
+             E: extension mode and extension hiding (XE, '<' instead of
+             the following ':' while XEL is active), *: post-* matching,
+             ET: type checking, EB: XEB, EC: XEC, P: XP, I: XI,
+             N: fast format (XN), H: XH, R: the M-R file (XR). EB and EC
+             are only present if the firmware was built with them.
              The track indicates the current device address.
 
   - XS:name  Set up a swap list - see "Changing Disk Images" below.
@@ -908,10 +1064,142 @@ Parsing of x00 files is always enabled even when writing them is not.
 x00 files are recognized by checking both the extension of the file
 (P/S/U/R with a two-digit suffix) and the header signature.
 
+Converting between extension modes:
+====================================
+The extension mode (see XE) only decides how files are written. Files
+that were written in one mode keep their FAT names when the mode is
+changed, so e.g. files written in xe5 are not shown with their PETSCII
+names in xe2. EC (see above) allows a program on the C64 to convert all
+files of a directory tree into the form of another mode. This is a
+sketch of such a program.
+
+- The idea
+  Every file is first renamed to a temporary name (EC:name) in a mode
+  that reads it correctly, then the mode is switched to the target mode
+  and the file gets its name back (EC:name=TMPn), now in the form of the
+  target mode. The temporary names TMP1, TMP2, ... look the same in all
+  modes, so they are the bridge between the two modes.
+
+- Converting one directory
+  1. Switch to the source mode, i.e. the mode that reads the files
+     correctly: xe5 for files written in xe5, xe4 for files written in
+     any of the modes 0-4. xe4 reads x00 files and type extensions, and
+     the temporary files keep their file type in their extension. In
+     xe1 and xe2 the first step is not possible at all (31,SYNTAX
+     ERROR), and in xe0 a SEQ or USR file in x00 format would lose its
+     type.
+  2. Read the directory, including hidden files (see "Directory
+     filters", *=H), and store the names of the subdirectories.
+  3. Convert each subdirectory the same way: CD into it, start at
+     step 1, and go back with CD:_ (left arrow) when it is done.
+  4. Read the directory again and store the names of the files.
+  5. Send EC:name for every stored file and subdirectory and store the
+     temporary name reported on the error channel ("80,TMP1,0,0")
+     together with the name.
+  6. Switch to the target mode. If the target mode is one of 0-2,
+     enable extension hiding (XE+), so the temporary files are found
+     with their type, and restore the previous setting when the
+     conversion is done. If the firmware has XEB and the source mode
+     was xe5 with XEB1, send XEB+ as well (the temporary names were
+     written as {}TMPn then).
+  7. Send EC:name=TMPn for every stored pair. If the target mode needs
+     an x00 header, the file is copied and the source deleted.
+  8. Switch back to the source mode before the parent directory is
+     continued.
+
+  Subdirectories are converted after their contents, so the names used
+  to CD into them stay valid. Disk images are files and are converted
+  like other files (they never get an x00 header), but their contents
+  are not touched.
+
+- Memory
+  Reading the directory twice (step 2 for the subdirectories, step 4
+  for the files) means that only the list of subdirectories has to be
+  kept while a subdirectory is processed, not the whole directory. The
+  directory filter =D (or =B) reads only the subdirectories in step 2.
+  Setting XI0 before the conversion makes sure disk images are listed
+  as files and not as directories.
+
+- Things to keep in mind
+  - If the extension settings are locked (XEL), XEU is needed first,
+    otherwise the mode changes are silently ignored. Lock them again
+    with XEL afterwards.
+  - The names are given in commands, so names containing = " * ? or ,
+    can not be given exactly; such files have to be renamed first.
+  - EC does not work inside disk images (31,SYNTAX ERROR). Inside an
+    image, the names don't depend on the extension mode anyway.
+  - The conversion is not atomic: If it is interrupted, files remain
+    with temporary names. A program should keep the list of pairs
+    somewhere else (in memory, on another drive or partition) so it
+    can finish the work later.
+  - EC:name=TMPn fails with 63,FILE EXISTS if a file with that name
+    exists in the target form already.
+  - Directories are never x00 files, they are always just renamed. In
+    the modes 0-4 a directory name that FAT can't hold results in
+    33,SYNTAX ERROR; such a directory has to be renamed first. With
+    XEB+ (see XEB), EC gives such a directory its mode 5 form instead,
+    if that contains a "{" - then XEB+ reads it back correctly. Old
+    firmware without XEB shows these names with their escapes. R, MD
+    and N: never do this, in the modes 0-4 they only create names that
+    every sd2iec can read.
+
+- Special case: adding the XEB marker
+  To give files written in xe5 the {} marker of XEB1 (see XEB), the
+  same procedure is used with xe5 and XEB1 as source and target mode,
+  i.e. without switching modes in steps 6 and 8.
+
+GEOS files and CVT:
+===================
+If the firmware was built with CONFIG_CVT, GEOS files can be stored on
+FAT as CVT files (the GEOS convert format, see doc/CVT.TXT including its
+addenda: GeoConvert98 format V2 and CVT files without INFO block). In
+disk images GEOS files are stored as GEOS files, as on a real drive. The
+,V open mode connects both: it delivers a file as a CVT, and a file
+written with ,V is a CVT.
+
+- CVT files on FAT
+  A file with the extension .CVT whose content is a valid CVT is shown
+  with the type and size of the original file and, with XEC- (the
+  default), with the name inside the CVT (see XEC). With XEC+ and
+  extension hiding the .CVT is removed from the FAT name. A .CVT file
+  that is not a valid CVT is a normal PRG file.
+
+  Opening a CVT normally behaves like a real drive: a sequential GEOS
+  file delivers only its data, a VLIR file can not be read this way.
+  ET:name,V turns a file into a CVT (renames it to .CVT), ET:name,P
+  turns a CVT into a normal PRG file containing the CVT (see ET).
+
+- The ,V open mode
+  OPEN 2,8,2,"NAME,V" delivers the file as a CVT stream: a CVT on FAT as
+  it is stored; any other file on FAT and any file in a disk image as if
+  it was stored as a CVT (the signature block, INFO block and RECORD
+  block are created from the directory entry and the GEOS sectors).
+  Files of all types can be read this way, including REL files.
+
+  OPEN 2,8,2,"NAME,V,W" writes a CVT: on FAT it is stored as NAME.CVT,
+  the content is not checked. In a disk image it is written as a PRG
+  file and converted into the GEOS file when it is closed; the file then
+  gets the name, date and flags from the CVT. If the conversion is not
+  possible the PRG file is kept and the error channel says why.
+  Appending (,A) and REL files (,L) are not possible with ,V
+  (31,SYNTAX ERROR).
+
+- VLIR records
+  Single records of a VLIR file can be read with P, either on a channel
+  opened with ,V or by selecting the record with P on channel 15 before
+  the file is opened or copied (see P).
+
+- Conversion and copying
+  CCVT copies files as CVT, e.g. from a disk image to FAT and back (see
+  C). In a disk image, EC:name,C and EC:name,G convert between a GEOS
+  file and a CVT stored as PRG file in place (see EC).
+
 Disk Images:
 ============
 Disk images are recognized by their file extension (.D64, .D41, .D71, .D81,
-.DNP) and their file size.
+.DNP) and their file size. If the firmware was built with CONFIG_D80D82,
+.D80 (8050) and .D82 (8250) images are supported as well and can
+also be created with N:.
 
 D41 images with more than 35 tracks can be mounted, if the additional
 data is a multiple of 17 sectors and within a maximum of 42 tracks total.
