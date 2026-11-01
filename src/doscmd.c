@@ -2524,7 +2524,26 @@ static void parse_xcommand(void) {
         globalflags &= (uint8_t)~CVT_FSNAME;
       }
 #endif
-    } else if (!lockXE) { 
+#ifdef CONFIG_XEB
+    } else if (*str == 'B') {
+      /* XEB+/XEB-: read rule, XEB0/XEB1: write rule (not locked by XEL) */
+      str++;
+      if (*str == '+') {
+        brace_mode |= XEB_READ;
+      } else if (*str == '-') {
+        brace_mode &= (uint8_t)~XEB_READ;
+      } else {
+        num = parse_number(&str);
+        if (num > 1) {
+          set_error(ERROR_SYNTAX_UNKNOWN);
+          break;
+        }
+        brace_mode = (brace_mode & (uint8_t)~XEB_WRITE_MASK) | (num << XEB_WRITE_SHIFT);
+        if (num)
+          brace_mode |= XEB_READ;
+      }
+#endif
+    } else if (!lockXE) {
       if (*str == '+') {
         globalflags |= EXTENSION_HIDING;
       } else if (*str == '-') {

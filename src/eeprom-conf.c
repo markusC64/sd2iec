@@ -125,6 +125,9 @@ void read_configuration(void) {
 
   tmp = eeprom_read_byte(&storedconfig.fileexts);
   file_extension_mode = tmp & 0xf;
+#ifdef CONFIG_XEB
+  brace_mode = tmp & (XEB_WRITE_MASK | XEB_READ);
+#endif
   lockXE = (tmp >> 7)&1;
 
 #ifdef NEED_DISKMUX
@@ -166,7 +169,11 @@ void write_configuration(void) {
   eeprom_write_byte(&storedconfig.global_flags, globalflags);
   eeprom_write_byte(&storedconfig.address, device_address);
   eeprom_write_byte(&storedconfig.hardaddress, device_hw_address());
-  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode | (lockXE << 7));
+  eeprom_write_byte(&storedconfig.fileexts, file_extension_mode |
+#ifdef CONFIG_XEB
+                    brace_mode |
+#endif
+                    (lockXE << 7));
 #ifdef NEED_DISKMUX
   eeprom_write_word(&storedconfig.drvconfig0, drive_config);
   eeprom_write_word(&storedconfig.drvconfig1, drive_config >> 16);
