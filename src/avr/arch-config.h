@@ -1071,7 +1071,9 @@ static inline uint8_t device_hw_address(void) {
     addr = 8;
     if (get_key_state(KEY_SEL))  addr += 1;
     if (get_key_state(KEY_NEXT)) addr += 2;
+#ifdef CONFIG_UART_DEBUG
     printf("dhw:%d\r\n", addr);
+#endif
   }
   return addr;
 }
@@ -1319,7 +1321,9 @@ static inline uint8_t device_hw_address(void) {
     addr = 8;
     if (get_key_state(KEY_SEL))  addr += 1;
     if (get_key_state(KEY_NEXT)) addr += 2;
+#ifdef CONFIG_UART_DEBUG
     printf("dhw:%d\r\n", addr);
+#endif
   }
   return addr;
 }
