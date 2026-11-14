@@ -23,6 +23,8 @@
 
 // Read registers
 #define I2C_SOFTWARE_VERSION    1
+// Alias used by masters working around the legacy register-state bug.
+#define I2C_SOFTWARE_VERSION_COMPAT 0
 
 // Software version
 #define CONFIG_VERSION          0x4E
