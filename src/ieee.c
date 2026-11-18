@@ -49,6 +49,7 @@
 #include "ctype.h"
 #include "display.h"
 #include "system.h"
+#include "multidrive.h"
 
 /*
   Debug output:
@@ -551,9 +552,15 @@ static void cmd_handler (void)
         filesystem_init(1);
       }
       update_leds();
+
+      /* The addressed device is not on the new card: forget the command */
+      if (md_device_lost)
+        ieee_data.ieeeflags &= (uint8_t) ~COMMAND_RECVD;
     }
 # endif
-    if (ieee_data.secondary_address == 0x0f) {
+    if (!(ieee_data.ieeeflags & COMMAND_RECVD)) {
+      /* command dropped above */
+    } else if (ieee_data.secondary_address == 0x0f) {
       parse_doscommand();                   /* Command channel */
     } else {
       datacrc = 0xffff;                     /* Filename in command buffer */
@@ -648,18 +655,22 @@ void ieee_mainloop(void) {
           }
           ieee_data.bus_state = BUS_IDLE;
           break;
-        } else if (cmd == (0x40 + device_address)) {        /* TALK */
+        } else if ((cmd & 0xe0) == 0x40 &&
+                   md_find(cmd & 0x1f) != MD_NO_DEVICE) {     /* TALK */
+          md_select(md_find(cmd & 0x1f));
           uart_puts_p("TALK ");
-          uart_puthex(device_address); uart_putcrlf();
+          uart_puthex(MD_CUR_ADDRESS); uart_putcrlf();
           ieee_data.device_state = DEVICE_TALK;
           /* disk drives never talk immediatly after TALK, so stay idle
              and wait for a secondary address given by 0x60-0x6f DATA */
           ieee_data.bus_state = BUS_IDLE;
           break;
-        } else if (cmd == (0x20 + device_address)) {        /* LISTEN */
+        } else if ((cmd & 0xe0) == 0x20 &&
+                   md_find(cmd & 0x1f) != MD_NO_DEVICE) {     /* LISTEN */
+          md_select(md_find(cmd & 0x1f));
           ieee_data.device_state = DEVICE_LISTEN;
           uart_puts_p("LISTEN ");
-          uart_puthex(device_address); uart_putcrlf();
+          uart_puthex(MD_CUR_ADDRESS); uart_putcrlf();
           ieee_data.bus_state = BUS_IDLE;
           break;
         } else if ((cmd & 0xf0) == 0x60) {                  /* DATA */
@@ -696,7 +707,7 @@ void ieee_mainloop(void) {
           uart_putcrlf();
           /* Close all buffers if sec. 15 is closed */
           if(ieee_data.secondary_address == 15) {
-            free_multiple_buffers(FMB_USER_CLEAN);
+            free_multiple_buffers(FMB_DEV_USER_CLEAN);
           } else {
             /* Close a single buffer */
             buffer_t *buf;
