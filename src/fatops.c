@@ -1903,7 +1903,7 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
     /* Changing into a file, could be a mount request */
     if (check_imageext(dent->pvt.fat.realname) != IMG_UNKNOWN) {
       /* D64/M2I mount request */
-      free_multiple_buffers(FMB_USER_CLEAN);
+      free_multiple_buffers(FMB_DEV_USER_CLEAN);
       /* Open image file */
       res = f_open(partition[path->part].fatfs,
                    &partition[path->part].imagehandle,
@@ -2459,7 +2459,7 @@ void fatops_init(uint8_t preserve_path) {
 uint8_t image_unmount(uint8_t part) {
   FRESULT res;
 
-  free_multiple_buffers(FMB_USER_CLEAN);
+  free_multiple_buffers(FMB_DEV_USER_CLEAN);
 
   /* call D64 unmount function to handle BAM refcounting etc. */
   // FIXME: ops entry?
