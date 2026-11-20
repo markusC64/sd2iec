@@ -2883,6 +2883,9 @@ static void format_d80_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
   idbuf[3] = '2';
   idbuf[4] = 'C';
   format_copy_label(part, buf->data, name, idbuf);
+  /* two additional 0xa0 characters, as written by the 8050/8250 ROM */
+  buf->data[0x1f] = 0xa0;
+  buf->data[0x20] = 0xa0;
 
   if (image_write(part, 0x44e00L, buf->data, 256, 0))
     return;
@@ -2947,6 +2950,9 @@ static void format_d82_image(uint8_t part, buffer_t *buf, uint8_t *name, uint8_t
   idbuf[3] = '2';
   idbuf[4] = 'C';
   format_copy_label(part, buf->data, name, idbuf);
+  /* two additional 0xa0 characters, as written by the 8050/8250 ROM */
+  buf->data[0x1f] = 0xa0;
+  buf->data[0x20] = 0xa0;
 
   if (image_write(part, 0x44e00L, buf->data, 256, 0))
     return;
