@@ -313,7 +313,8 @@ static void draw_row(uint8_t r) {
   if (r == 0 || st->tab[st->rows[r - 1]].address != e->address) {
     uint8_t a = e->address ? e->address : st->own_address;
 
-    lcd_printf(e->address ? "#%d" : "*%d", a);
+    lcd_putc(e->address ? '#' : '*');
+    lcd_printf("%d", a);
     if (a < 10)
       lcd_putc(' ');
     lcd_putc(' ');
