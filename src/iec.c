@@ -94,6 +94,36 @@ uint8_t iec_check_atn(void) {
       return 0;
 }
 
+#if defined(HAVE_HOTPLUG) && defined(CONFIG_MULTIDRIVE)
+/**
+ * iec_idle_card_change - handle a card change while the bus is idle
+ *
+ * With multi-drive support the bus addresses depend on DRIVES.CFG of
+ * the card, so a card change must be handled before the next command:
+ * waiting for a command to one of the old addresses would leave the
+ * device deaf for the new ones. The ATN interrupt answers the bus
+ * meanwhile. A removed card is handled only once, errors are still
+ * retried when the next command arrives.
+ */
+static void iec_idle_card_change(void) {
+  static uint8_t removal_handled;
+  enum diskstates state = disk_state;
+
+  if (state != DISK_REMOVED)
+    removal_handled = 0;
+  if (state == DISK_CHANGED || (state == DISK_REMOVED && !removal_handled)) {
+    removal_handled = (state == DISK_REMOVED);
+    set_busy_led(1);
+    free_multiple_buffers(FMB_ALL);
+    change_init();
+    filesystem_init(0);
+    update_leds();
+  }
+}
+#else
+#  define iec_idle_card_change() do {} while (0)
+#endif
+
 /* IEC ATN handler (if Dreamload is not used) */
 #ifndef CONFIG_LOADER_DREAMLOAD
 IEC_ATN_HANDLER {
@@ -163,7 +193,7 @@ static int16_t _iec_getc(void) {
 
         /* If there is a delay before the last bit, the controller uses JiffyDOS */
         if (!(iec_data.iecflags & JIFFY_ACTIVE) && has_timed_out()) {
-          if ((val>>1) < 0x60 && md_find((val>>1) & 0x1f) != MD_NO_DEVICE) {
+          if ((val>>1) < 0x60 && md_is_address((val>>1) & 0x1f)) {
             /* If it's for us, notify controller that we support Jiffy too */
             set_data(0);
             delay_us(101); // nlq says 405us, but the code shows only 101
@@ -584,6 +614,7 @@ void iec_mainloop(void) {
           display_service();
           reset_key(KEY_DISPLAY);
         }
+        iec_idle_card_change();
         system_sleep();
       }
 
@@ -638,13 +669,11 @@ void iec_mainloop(void) {
         if (iec_data.device_state == DEVICE_TALK)
           iec_data.device_state = DEVICE_IDLE;
         iec_data.bus_state = BUS_ATNFINISH;
-      } else if ((cmd & 0xe0) == 0x40 &&
-                 md_find(cmd & 0x1f) != MD_NO_DEVICE) { /* Talk */
+      } else if (md_bus_cmd(cmd, 0x40)) {             /* Talk */
         md_select(md_find(cmd & 0x1f));
         iec_data.device_state = DEVICE_TALK;
         iec_data.bus_state = BUS_FORME;
-      } else if ((cmd & 0xe0) == 0x20 &&
-                 md_find(cmd & 0x1f) != MD_NO_DEVICE) { /* Listen */
+      } else if (md_bus_cmd(cmd, 0x20)) {             /* Listen */
         md_select(md_find(cmd & 0x1f));
         iec_data.device_state = DEVICE_LISTEN;
         iec_data.bus_state = BUS_FORME;
@@ -775,16 +804,21 @@ void iec_mainloop(void) {
             filesystem_init(1);
 
           update_leds();
+#ifdef CONFIG_MULTIDRIVE
 
           /* The addressed device is not on the new card: forget the command */
           if (md_device_lost)
             iec_data.iecflags &= (uint8_t)~COMMAND_RECVD;
+#endif
         }
 #endif
 
+#ifdef CONFIG_MULTIDRIVE
         if (!(iec_data.iecflags & COMMAND_RECVD)) {
           /* command dropped above */
-        } else if (iec_data.secondary_address == 0x0f) {
+        } else
+#endif
+        if (iec_data.secondary_address == 0x0f) {
           /* Command channel */
           parse_doscommand();
         } else {

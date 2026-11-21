@@ -30,6 +30,10 @@
 #include "ff.h"
 
 /* Number of FAT volumes (partitions on the card) that can be mounted */
+/* Without multi-drive support every partition has its own volume */
+#ifndef CONFIG_MULTIDRIVE
+#  undef  CONFIG_MAX_VOLUMES
+#endif
 #ifndef CONFIG_MAX_VOLUMES
 #  define CONFIG_MAX_VOLUMES CONFIG_MAX_PARTITIONS
 #endif
@@ -38,6 +42,14 @@
 extern FATFS fatvol[CONFIG_MAX_VOLUMES];
 
 extern partition_t partition[CONFIG_MAX_PARTITIONS];
+
+/* FatFs volume of a partition: a pointer with multi-drive support, */
+/* the partition number otherwise (saves the pointer per partition) */
+#ifdef CONFIG_MULTIDRIVE
+#  define part_fatfs(p) (partition[p].fatfs)
+#else
+#  define part_fatfs(p) (&fatvol[p])
+#endif
 extern uint8_t current_part;
 extern uint8_t max_part;
 

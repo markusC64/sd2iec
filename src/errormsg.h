@@ -31,8 +31,10 @@
 #include "progmem.h"
 
 extern uint8_t current_error;
-extern uint8_t current_error_track;   /* track and sector of current_error */
-extern uint8_t current_error_sector;
+#ifdef CONFIG_MULTIDRIVE
+extern uint8_t current_error_track;   /* track and sector of current_error, */
+extern uint8_t current_error_sector;  /* to restore it per device           */
+#endif
 extern uint8_t error_buffer[CONFIG_ERROR_BUFFER_SIZE];
 
 

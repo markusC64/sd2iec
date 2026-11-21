@@ -534,6 +534,36 @@ static uint8_t ieee_talk_handler (void)
   return 0;
 }
 
+#if defined(HAVE_HOTPLUG) && defined(CONFIG_MULTIDRIVE)
+/**
+ * ieee_idle_card_change - handle a card change while the bus is idle
+ *
+ * With multi-drive support the bus addresses depend on DRIVES.CFG of
+ * the card, so a card change must be handled before the next command:
+ * waiting for a command to one of the old addresses would leave the
+ * device deaf for the new ones. The ATN interrupt answers the bus
+ * meanwhile. A removed card is handled only once, errors are still
+ * retried when the next command arrives.
+ */
+static void ieee_idle_card_change(void) {
+  static uint8_t removal_handled;
+  enum diskstates state = disk_state;
+
+  if (state != DISK_REMOVED)
+    removal_handled = 0;
+  if (state == DISK_CHANGED || (state == DISK_REMOVED && !removal_handled)) {
+    removal_handled = (state == DISK_REMOVED);
+    set_busy_led(1);
+    free_multiple_buffers(FMB_ALL);
+    change_init();
+    filesystem_init(0);
+    update_leds();
+  }
+}
+#else
+#  define ieee_idle_card_change() do {} while (0)
+#endif
+
 static void cmd_handler (void)
 {
   /* Handle commands and filenames */
@@ -553,14 +583,19 @@ static void cmd_handler (void)
       }
       update_leds();
 
+#  ifdef CONFIG_MULTIDRIVE
       /* The addressed device is not on the new card: forget the command */
       if (md_device_lost)
         ieee_data.ieeeflags &= (uint8_t) ~COMMAND_RECVD;
+#  endif
     }
 # endif
+#ifdef CONFIG_MULTIDRIVE
     if (!(ieee_data.ieeeflags & COMMAND_RECVD)) {
       /* command dropped above */
-    } else if (ieee_data.secondary_address == 0x0f) {
+    } else
+#endif
+    if (ieee_data.secondary_address == 0x0f) {
       parse_doscommand();                   /* Command channel */
     } else {
       datacrc = 0xffff;                     /* Filename in command buffer */
@@ -620,6 +655,7 @@ void ieee_mainloop(void) {
             display_service();
             reset_key(KEY_DISPLAY);
           }
+          ieee_idle_card_change();
           system_sleep();
       }
 
@@ -655,8 +691,7 @@ void ieee_mainloop(void) {
           }
           ieee_data.bus_state = BUS_IDLE;
           break;
-        } else if ((cmd & 0xe0) == 0x40 &&
-                   md_find(cmd & 0x1f) != MD_NO_DEVICE) {     /* TALK */
+        } else if (md_bus_cmd(cmd, 0x40)) {                  /* TALK */
           md_select(md_find(cmd & 0x1f));
           uart_puts_p("TALK ");
           uart_puthex(MD_CUR_ADDRESS); uart_putcrlf();
@@ -665,8 +700,7 @@ void ieee_mainloop(void) {
              and wait for a secondary address given by 0x60-0x6f DATA */
           ieee_data.bus_state = BUS_IDLE;
           break;
-        } else if ((cmd & 0xe0) == 0x20 &&
-                   md_find(cmd & 0x1f) != MD_NO_DEVICE) {     /* LISTEN */
+        } else if (md_bus_cmd(cmd, 0x20)) {                  /* LISTEN */
           md_select(md_find(cmd & 0x1f));
           ieee_data.device_state = DEVICE_LISTEN;
           uart_puts_p("LISTEN ");

@@ -230,7 +230,7 @@ static int8_t m2i_readdir(dh_t *dh, cbmdirent_t *dent) {
       /* Let's annoy some users */
       FILINFO finfo;
 
-      FRESULT res = f_stat(partition[dh->part].fatfs, ops_scratch + M2I_FATNAME_OFFSET, &finfo);
+      FRESULT res = f_stat(part_fatfs(dh->part), ops_scratch + M2I_FATNAME_OFFSET, &finfo);
       if (res != FR_OK) {
         if (res == FR_NO_FILE)
           continue;
@@ -352,7 +352,7 @@ static void m2i_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
 
       finfo.lfn = NULL;
       /* See if it's already there */
-      res = f_stat(partition[path->part].fatfs, ops_scratch + M2I_FATNAME_OFFSET, &finfo);
+      res = f_stat(part_fatfs(path->part), ops_scratch + M2I_FATNAME_OFFSET, &finfo);
       if (res == FR_OK) {
         str = ops_scratch + M2I_FATNAME_OFFSET+7;
         /* Increment name */

@@ -40,8 +40,10 @@
 #include "errormsg.h"
 
 uint8_t current_error;
+#ifdef CONFIG_MULTIDRIVE
 uint8_t current_error_track;
 uint8_t current_error_sector;
+#endif
 uint8_t error_buffer[CONFIG_ERROR_BUFFER_SIZE];
 
 /// Version number string, will be added to message 73
@@ -191,8 +193,10 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
   uint8_t i = 0;
 
   current_error        = errornum;
+#ifdef CONFIG_MULTIDRIVE
   current_error_track  = track;
   current_error_sector = sector;
+#endif
   buffers[ERRORBUFFER_IDX].data     = error_buffer;
   buffers[ERRORBUFFER_IDX].lastused = 0;
   buffers[ERRORBUFFER_IDX].position = 0;

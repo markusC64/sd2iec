@@ -46,6 +46,7 @@
 #include "ustring.h"
 #include "wrapops.h"
 #include "fastloader.h"
+#include "multidrive.h"
 
 
 /*
@@ -629,7 +630,7 @@ static void wheels_get_current_part_dir(void) {
 
   data[0] = partition[current_part].current_dir.dxx.track;
   data[1] = partition[current_part].current_dir.dxx.sector;
-  data[2] = current_part+1;
+  data[2] = md_part_number(current_part);
   wheels_transmit_datablock(&data, 3);
 }
 
@@ -639,8 +640,13 @@ static void wheels_set_current_part_dir(void) {
 
   wheels_receive_datablock(&data, 3);
 
-  if (data[2] != 0)
-    current_part = data[2]-1;
+  if (data[2] != 0) {
+    uint8_t part = md_number_part(data[2]);
+
+    if (part >= max_part)
+      return;                   // no such partition (drive)
+    current_part = part;
+  }
 
   partition[current_part].current_dir.dxx.track  = data[0];
   partition[current_part].current_dir.dxx.sector = data[1];

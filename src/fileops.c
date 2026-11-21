@@ -297,12 +297,18 @@ static uint8_t pdir_refill(buffer_t* buf) {
 
   /* read volume name */
   while(buf->pvt.pdir.part < max_part) {
+    /* multi-drive: only the drives of the addressed device */
+    if (!md_part_visible(buf->pvt.pdir.part)) {
+      buf->pvt.pdir.part++;
+      continue;
+    }
+
     if (disk_label(buf->pvt.pdir.part, dent.name)) {
       free_buffer(buf);
       return 1;
     }
 
-    dent.blocksize = buf->pvt.pdir.part+1;
+    dent.blocksize = md_part_number(buf->pvt.pdir.part);
 
     if (partition[buf->pvt.pdir.part].fop == &d64ops) {
       /* Use the correct partition type for Dxx images */
