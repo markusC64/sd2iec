@@ -94,6 +94,10 @@ void read_configuration(void) {
   /* Use the NEXT button to skip reading the EEPROM configuration */
   if (!(buttons_read() & BUTTON_NEXT)) {
     ignore_keys();
+#ifdef CONFIG_MULTIDRIVE
+    /* as if XVA- was saved: a DRIVES.CFG on the card is not read */
+    globalflags |= MD_NOAUTO;
+#endif
     return;
   }
 
