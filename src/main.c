@@ -36,6 +36,7 @@
 #include "fatops.h"
 #include "ff.h"
 #include "filesystem.h"
+#include "flags.h"
 #include "i2c.h"
 #include "led.h"
 #include "time.h"
@@ -127,6 +128,11 @@ int main(void) {
   if (get_key_state(KEY_PREV | KEY_NEXT) == (KEY_PREV | KEY_NEXT)) {
     eeprom_config_ignored = true;
     device_address      = CONFIG_DEFAULT_ADDR;
+#ifdef CONFIG_MULTIDRIVE
+    /* as if XVA- was saved: forget the drives of DRIVES.CFG again */
+    globalflags        |= MD_NOAUTO;
+    filesystem_init(0);
+#endif
 #ifdef CONFIG_ONBOARD_DISPLAY
     menu_system_enabled = true;
 #endif

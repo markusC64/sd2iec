@@ -891,9 +891,8 @@ void menu_drives(void) {
   st = NULL;
 
   if (result == 2) {
-    /* read the new file like after a card change */
-    free_multiple_buffers(FMB_ALL);
-    filesystem_init(0);
+    /* read the new file, also with XVA- */
+    md_reinit(MD_LOAD_FORCE);
     md_layout_changed = 0;
   }
   return;

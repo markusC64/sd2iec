@@ -46,6 +46,7 @@
 #endif
 #define MD_NO_SLOT       0xff
 #define MD_NO_DEVICE     0xff
+#define MD_FA_RUNTIME    0xff  /* file_address of a device made by XV+ */
 
 /* Name of the configuration file in the root directory of the card */
 #define MD_CONFIG_FILE   "DRIVES.CFG"
@@ -60,7 +61,8 @@
 typedef struct {
   uint8_t address;            /* bus address, 0 = entry unused       */
   uint8_t file_address;       /* address as written in DRIVES.CFG,   */
-                              /*   0 = follows device_address        */
+                              /*   0 = follows device_address,       */
+                              /*   MD_FA_RUNTIME = made by XV+        */
   uint8_t dual;               /* drive 0 configured: CBM DOS 2 style */
   uint8_t cur_part;           /* current partition while not addressed */
   uint8_t err_code;           /* saved error channel state while the */
@@ -99,6 +101,15 @@ uint8_t md_set_address(uint8_t addr);
 
 /* XW: store an address change of the current device in DRIVES.CFG */
 void md_store_address(void);
+
+/* XV commands: drives without DRIVES.CFG, reading it on/off */
+void md_xcommand(void);
+
+/* Close everything and set up the drives again, see md_reinit */
+#define MD_LOAD_AUTO     0     /* read DRIVES.CFG unless XVA- is set  */
+#define MD_LOAD_FORCE    1     /* read it anyway (XVL, drives menu)   */
+#define MD_LOAD_NEVER    2     /* single drive (XV-)                  */
+uint8_t md_reinit(uint8_t req);
 
 /* ---- editing DRIVES.CFG (drives menu, XW) ---- */
 

@@ -47,6 +47,11 @@
    Without a configuration file nothing changes and the legacy single
    drive behaviour is kept.
 
+   The XV commands set up drives without the file (XV+, XV-), read it
+   on request (XVL) and switch reading it at power-on and card change
+   on or off (XVA+/-, saved by XW). A card change always discards the
+   drives set up by command.
+
 */
 
 #include <ctype.h>
@@ -57,8 +62,11 @@
 #include "bus.h"
 #include "doscmd.h"
 #include "errormsg.h"
+#include "eefs-ops.h"
 #include "fatops.h"
 #include "ff.h"
+#include "filesystem.h"
+#include "flags.h"
 #include "parser.h"
 #include "ustring.h"
 #include "utils.h"
@@ -77,6 +85,8 @@ uint8_t     md_layout_changed;
 uint8_t     md_cur;
 uint8_t     md_drive_given;
 static uint8_t md_merge_own;    /* lines with device_address go to device 0 */
+static uint8_t md_implicit;     /* device made from the single drive by XV+ */
+static uint8_t load_req;        /* md_load: MD_LOAD_*                       */
 
 #if MD_MAX_SLOTS < 2
 #  error CONFIG_MAX_PARTITIONS is too small for multi-drive support
@@ -292,29 +302,20 @@ static void strip_trailing(uint8_t *str) {
 }
 
 /**
- * apply_line - parse one line of the configuration file
- * @line : 0-terminated line, ASCII
- * @slot : next free partition slot
+ * mount_slot - set up a partition slot for a path
+ * @path : path, 0-terminated, at least three bytes after the start of
+ *         the buffer it is in, which is modified in place
+ * @slot : partition slot
+ * @ascii: the path is ASCII (DRIVES.CFG), not PETSCII (XV+)
  *
- * Returns 1 if a slot was used, 0 otherwise. The line buffer must be
- * the command buffer, it is modified in place. md_active must be 0, so
- * the legacy partition syntax of do_chdir reaches every slot.
+ * Returns 1 if successful, otherwise 0 with the error channel set.
+ * md_active must be 0, so the legacy partition syntax of do_chdir
+ * reaches every slot.
  */
-static uint8_t apply_line(uint8_t *line, uint8_t slot) {
-  uint8_t *path, *p, vol = 0;
-  uint8_t dev;
-  md_head_t h;
+static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t ascii) {
+  uint8_t *p, vol = 0;
 
-  if (!parse_head(line, ustrlen(line), &h))
-    return 0;
-  path = line + h.path_start;
   strip_trailing(path);
-
-  /* devices were created in the first pass, drive 0 made them dual */
-  dev = find_device(file_key(h.address));
-  if (dev == MD_NO_DEVICE || (md_dev[dev].dual && h.drive > 1) ||
-      find_slot(dev, h.drive) != MD_NO_SLOT)
-    return 0;
 
   /* optional partition number in front, like in the CD command */
   for (p = path; isdigit(*p) && p - path < 2; p++)
@@ -326,12 +327,14 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
   } else {
     vol = 0;
   }
-  if (vol >= md_volumes)
+  if (vol >= md_volumes) {
+    set_error(ERROR_PARTITION_ILLEGAL);
     return 0;
+  }
 
   /* Build a legacy CD string for the slot: "<slot+1>" and the path, */
-  /* which starts at the root. At least four characters ("8:0=")    */
-  /* precede the path.                                               */
+  /* which starts at the root. At least three characters precede    */
+  /* the path ("8:0=" in the file, "XV+" in the command).           */
   if (path[0] == '/' && path[1] == '/') {
     path -= 1;                  // "//DIR/"
   } else if (path[0] == '/') {
@@ -345,12 +348,14 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
     path[2] = '/';
   }
   path[0] = '1' + slot;
-  asc2pet(path + 1);
+  if (ascii)
+    asc2pet(path + 1);
 
   /* reset the slot to the root directory of the partition */
   partition[slot].fatfs           = &fatvol[vol];
   partition[slot].fop             = &fatops;
   partition[slot].current_dir.fat = 0;
+  md_slot_imgroot &= (uint16_t)~(1U << slot);
 
   set_error(ERROR_OK);
   do_chdir(path);
@@ -367,6 +372,32 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
   md_slot_root[slot] = partition[slot].current_dir.fat;
   if (partition[slot].fop != &fatops)
     md_slot_imgroot |= 1U << slot;
+  return 1;
+}
+
+/**
+ * apply_line - parse one line of the configuration file
+ * @line : 0-terminated line, ASCII
+ * @slot : next free partition slot
+ *
+ * Returns 1 if a slot was used, 0 otherwise. The line buffer must be
+ * the command buffer, it is modified in place.
+ */
+static uint8_t apply_line(uint8_t *line, uint8_t slot) {
+  uint8_t dev;
+  md_head_t h;
+
+  if (!parse_head(line, ustrlen(line), &h))
+    return 0;
+
+  /* devices were created in the first pass, drive 0 made them dual */
+  dev = find_device(file_key(h.address));
+  if (dev == MD_NO_DEVICE || (md_dev[dev].dual && h.drive > 1) ||
+      find_slot(dev, h.drive) != MD_NO_SLOT)
+    return 0;
+
+  if (!mount_slot(line + h.path_start, slot, 1))
+    return 0;
 
   md_slot_dev[slot] = dev;
   md_slot_drv[slot] = h.drive;
@@ -670,7 +701,9 @@ void md_store_address(void) {
   md_edit_t   e;
   uint8_t     i;
 
-  if (!md_active || !dev->file_address || dev->address == dev->file_address)
+  /* XVA-: DRIVES.CFG is not in use, devices of XV+ are not in it */
+  if (!md_active || !dev->file_address || dev->address == dev->file_address ||
+      dev->file_address == MD_FA_RUNTIME || (globalflags & MD_NOAUTO))
     return;
 
   for (i = 0; i < MD_MAX_DEVICES; i++) {
@@ -692,11 +725,40 @@ void md_store_address(void) {
     dev->file_address = dev->address;
 }
 
+/* Reset to the legacy single drive state (the partition table aside) */
+static void md_reset(void) {
+  md_active = 0;
+  md_cur    = 0;
+  md_slots  = 0;
+  md_merge_own = 0;
+  md_implicit  = MD_NO_DEVICE;
+  md_slot_imgroot = 0;
+  memset(md_dev, 0, sizeof(md_dev));
+  memset(md_slot_dev, MD_NO_DEVICE, sizeof(md_slot_dev));
+}
+
+/* The slot a device starts with: drive 0 of a CBM DOS 2 drive (which  */
+/* needs it), otherwise its lowest drive. MD_NO_SLOT if it has none.   */
+static uint8_t first_drive(uint8_t dev) {
+  uint8_t d, s;
+
+  for (d = 0; d <= MD_MAX_DRIVE; d++) {
+    if (d == 0 && !md_dev[dev].dual)
+      continue;
+    s = find_slot(dev, d);
+    if (s != MD_NO_SLOT || d == 0)
+      return s;
+  }
+  return MD_NO_SLOT;
+}
+
 /**
  * md_load - read the configuration file and set up the drive slots
  * @prev_address: bus address that stays the current device if it exists
  *
- * Leaves legacy mode active if there is no card or no configuration file.
+ * Leaves legacy mode active if there is no card or no configuration
+ * file, or if reading it is switched off (XVA-) and not requested
+ * (XVL). Clears load_req if the file was found.
  */
 static void md_load(uint8_t prev_address) {
   FIL      fh;
@@ -708,18 +770,16 @@ static void md_load(uint8_t prev_address) {
   buffer_t *save;
   md_head_t h;
 
-  md_active = 0;
-  md_cur    = 0;
-  md_slots  = 0;
-  md_merge_own = 0;
-  md_slot_imgroot = 0;
-  memset(md_dev, 0, sizeof(md_dev));
-  memset(md_slot_dev, MD_NO_DEVICE, sizeof(md_slot_dev));
+  md_reset();
 
   /* fatops_init mounted the FAT volumes as partitions 1..max_part */
   md_volumes = max_part;
 
   if (max_part == 0 || partition[0].fop != &fatops)
+    return;
+
+  if (load_req == MD_LOAD_NEVER ||
+      (load_req == MD_LOAD_AUTO && (globalflags & MD_NOAUTO)))
     return;
 
   part_fatfs(0)->curr_dir = 0;
@@ -732,6 +792,7 @@ static void md_load(uint8_t prev_address) {
     if (res != FR_OK)
       return;
   }
+  load_req = MD_LOAD_AUTO;
 
   saved_error  = current_error;
   saved_track  = current_error_track;
@@ -778,20 +839,16 @@ static void md_load(uint8_t prev_address) {
     if (!md_dev[i].address)
       continue;
 
-    md_dev[i].cur_part = MD_NO_SLOT;
-    for (d = 0; d <= MD_MAX_DRIVE && md_dev[i].cur_part == MD_NO_SLOT; d++) {
-      if (d == 0 && !md_dev[i].dual)
-        continue;
-      md_dev[i].cur_part = find_slot(i, d);
-      if (d == 0)
-        break;                  // CBM DOS 2: drive 0 or nothing
-    }
-
+    md_dev[i].cur_part = first_drive(i);
     if (md_dev[i].cur_part == MD_NO_SLOT) {
       md_dev[i].address = 0;
-      for (d = 0; d < md_slots; d++)
-        if (md_slot_dev[d] == i)
+      for (d = 0; d < md_slots; d++) {
+        if (md_slot_dev[d] == i) {
           md_slot_dev[d] = MD_NO_DEVICE;
+          if (partition[d].fop != &fatops)
+            image_unmount(d);
+        }
+      }
     }
   }
 
@@ -821,7 +878,9 @@ static void md_load(uint8_t prev_address) {
     md_dev[i].err_sector = 0;
   }
 
-  max_part  = md_slots;
+  /* The slots keep their place, so XV+ can fill the free ones. The */
+  /* EEPROM file system gets the partition behind them.             */
+  max_part  = MD_MAX_SLOTS;
   md_active = 1;
 
   /* device_address stays untouched: it is the legacy address */
@@ -859,4 +918,319 @@ void md_init(void) {
   for (i = 0; i < MD_MAX_DEVICES; i++)
     if (md_dev[i].address != old_address[i])
       md_layout_changed = 1;
+}
+
+/* ------------------------------------------------------------------------- */
+/*  XV: drives without DRIVES.CFG                                            */
+/* ------------------------------------------------------------------------- */
+
+/* the EEPROM file system goes to the partition behind the FAT ones */
+#ifdef CONFIG_HAVE_EEPROMFS
+static void place_eefs(void) {
+  if (eefs_partition != 255)
+    partition[eefs_partition].fop = &fatops;
+  eefsops_init();
+}
+#else
+#  define place_eefs() do {} while (0)
+#endif
+
+/* set the current slot of a device */
+static void set_cur(uint8_t dev, uint8_t slot) {
+  if (dev == md_cur)
+    current_part = slot;
+  else
+    md_dev[dev].cur_part = slot;
+}
+
+/**
+ * close_slots - close the channels of a device and free slots
+ * @dev : device index
+ * @slot: slot to free, MD_NO_SLOT for all slots of the device
+ *
+ * All channels of the device are closed, like when a drive is switched
+ * off, and the images of the freed slots are unmounted.
+ */
+static void close_slots(uint8_t dev, uint8_t slot) {
+  uint8_t cur = md_cur, i;
+
+  md_cur = dev;               // for FMB_CUR_DEVICE in both calls
+  free_multiple_buffers(FMB_DEV_USER_CLEAN);
+  for (i = 0; i < md_slots; i++) {
+    if (md_slot_dev[i] == dev && (slot == MD_NO_SLOT || slot == i)) {
+      if (partition[i].fop != &fatops)
+        image_unmount(i);
+      md_slot_dev[i] = MD_NO_DEVICE;
+    }
+  }
+  md_cur = cur;
+}
+
+/**
+ * md_reinit - close everything and set up the drives again
+ * @req: MD_LOAD_FORCE to read DRIVES.CFG, MD_LOAD_NEVER for single drive
+ *
+ * Like a card change, but the channels are closed properly and the
+ * images flushed. Returns non-zero if DRIVES.CFG was requested and
+ * not found.
+ */
+uint8_t md_reinit(uint8_t req) {
+  uint8_t i;
+
+  free_multiple_buffers(FMB_USER_CLEAN);
+  for (i = 0; i < (md_active ? md_slots : md_volumes); i++)
+    if ((!md_active || md_slot_dev[i] != MD_NO_DEVICE) &&
+        partition[i].fop != &fatops)
+      image_unmount(i);
+  free_multiple_buffers(FMB_ALL);
+
+  load_req = req;
+  filesystem_init(0);
+  req = (load_req == MD_LOAD_FORCE);
+  load_req = MD_LOAD_AUTO;
+  return req;
+}
+
+/**
+ * to_multi - turn the single drive into the first device
+ *
+ * The device keeps its address and gets each FAT partition as drive,
+ * with CMD semantics. Current directories, images and channels stay.
+ */
+static void to_multi(void) {
+  uint8_t i, n = md_volumes;
+
+  if (n > MD_MAX_SLOTS)
+    n = MD_MAX_SLOTS;
+
+  /* the partitions behind the slots become unreachable */
+  for (i = n; i < md_volumes; i++)
+    if (partition[i].fop != &fatops)
+      image_unmount(i);
+  if (current_part >= n)
+    current_part = 0;
+
+  md_dev[0].address = device_address;   // file_address 0: follows it
+  for (i = 0; i < n; i++) {
+    md_slot_dev[i]  = 0;
+    md_slot_drv[i]  = i + 1;
+    md_slot_root[i] = 0;
+  }
+  md_slots    = n;
+  md_implicit = 0;
+  md_active   = 1;
+  max_part    = MD_MAX_SLOTS;
+  place_eefs();
+  md_layout_changed = 1;
+}
+
+/**
+ * xv_add - XV+: add a drive
+ * @line: "<address>:<drive>=<path>" like a line of DRIVES.CFG, PETSCII
+ *
+ * A new address creates a device. The first drive of a device decides
+ * its semantics like in DRIVES.CFG: drive 0 makes it a CBM DOS 2 drive.
+ * In single drive mode the device itself stays as it is and its address
+ * cannot get drives.
+ */
+static void xv_add(uint8_t *line) {
+  md_head_t h;
+  uint8_t   addr, dev, slot, i, ok, was_single = !md_active;
+  uint8_t   newdev = MD_NO_DEVICE;
+
+  if (!parse_head(line, ustrlen(line), &h))
+    goto syntax;
+
+  addr = h.address ? h.address : device_address;
+  dev  = md_find(addr);
+  if (dev != MD_NO_DEVICE) {
+    if (was_single || dev == md_implicit ||
+        find_slot(dev, h.drive) != MD_NO_SLOT)
+      goto syntax;
+    /* drive 0 makes a CBM DOS 2 drive, which has drive 1 at most */
+    if (md_dev[dev].dual && h.drive > 1)
+      goto syntax;
+    for (i = 0; i < md_slots; i++)
+      if (h.drive == 0 && md_slot_dev[i] == dev && md_slot_drv[i] > 1)
+        goto syntax;
+  }
+
+  if (was_single)
+    to_multi();
+
+  if (dev == MD_NO_DEVICE) {
+    for (newdev = 0; newdev < MD_MAX_DEVICES && md_dev[newdev].address; newdev++) ;
+    if (newdev == MD_MAX_DEVICES)
+      goto nochannel;
+  }
+
+  for (slot = 0; slot < MD_MAX_SLOTS && md_slot_dev[slot] != MD_NO_DEVICE; slot++) ;
+  if (slot == MD_MAX_SLOTS)
+    goto nochannel;
+
+  md_active = 0;
+  ok = mount_slot(line + h.path_start, slot, 0);
+  md_active = 1;
+  if (!ok)
+    goto undo;
+
+  if (newdev != MD_NO_DEVICE) {
+    dev = newdev;
+    memset(&md_dev[dev], 0, sizeof(md_device_t));
+    md_dev[dev].address      = addr;
+    md_dev[dev].file_address = MD_FA_RUNTIME;
+    md_dev[dev].err_code     = ERROR_DOSVERSION;
+    md_dev[dev].cur_part     = slot;
+  }
+  if (h.drive == 0) {
+    md_dev[dev].dual = 1;
+    set_cur(dev, slot);
+  }
+  md_slot_dev[slot] = dev;
+  md_slot_drv[slot] = h.drive;
+  if (slot >= md_slots)
+    md_slots = slot + 1;
+  set_error(ERROR_OK);
+  return;
+
+ nochannel:
+  set_error(ERROR_NO_CHANNEL);
+ undo:
+  if (was_single) {
+    /* back to the single drive, nothing else was changed */
+    md_reset();
+    max_part = md_volumes;
+    place_eefs();
+  }
+  return;
+
+ syntax:
+  set_error(ERROR_SYNTAX_UNKNOWN);
+}
+
+/**
+ * xv_delete - XV-: delete a drive or a device
+ * @addr : bus address, 0 for the own one
+ * @drive: drive number, MD_NO_SLOT for the whole device
+ *
+ * Without devices left the SD2IEC returns to single drive mode like
+ * after a card change, with 00,OK in the error channel. A device that
+ * deletes itself is gone, like a drive that is switched off.
+ */
+static void xv_delete(uint8_t addr, uint8_t drive) {
+  uint8_t dev = md_find(addr ? addr : device_address);
+  uint8_t slot = MD_NO_SLOT, cur, i;
+
+  if (dev == MD_NO_DEVICE)
+    goto syntax;
+
+  if (drive != MD_NO_SLOT) {
+    /* the device made from the single drive has fixed drives */
+    if (!md_active || dev == md_implicit)
+      goto syntax;
+    slot = find_slot(dev, drive);
+    if (slot == MD_NO_SLOT)
+      goto syntax;
+  }
+
+  if (md_active) {
+    close_slots(dev, slot);
+    if (drive == 0)
+      md_dev[dev].dual = 0;   // drive 1 alone has CMD semantics
+
+    cur = (dev == md_cur) ? current_part : md_dev[dev].cur_part;
+    if (slot == MD_NO_SLOT || cur == slot)
+      cur = first_drive(dev);
+    if (cur != MD_NO_SLOT) {
+      set_cur(dev, cur);
+      set_error(ERROR_OK);
+      return;
+    }
+
+    /* no drive left: the device is gone */
+    md_dev[dev].address = 0;
+    if (dev == md_implicit)
+      md_implicit = MD_NO_DEVICE;
+    for (i = 0; i < MD_MAX_DEVICES; i++) {
+      if (md_dev[i].address) {
+        if (dev == md_cur)
+          md_select(i);
+        else
+          set_error(ERROR_OK);
+        return;
+      }
+    }
+  }
+
+  md_reinit(MD_LOAD_NEVER);
+  set_error(ERROR_OK);
+  return;
+
+ syntax:
+  set_error(ERROR_SYNTAX_UNKNOWN);
+}
+
+/**
+ * md_xcommand - XV commands, command_buffer+2 follows the XV
+ *
+ *   XV+a:d=path  add drive d of device a, path like in DRIVES.CFG
+ *   XV-a:d       delete drive d of device a
+ *   XV-a         delete device a
+ *   XV-          delete all devices: single drive
+ *   XVL          read DRIVES.CFG now
+ *   XVA+/XVA-    read DRIVES.CFG at power-on and card change (XW)
+ *
+ * Address 0 is the own address of the SD2IEC.
+ */
+void md_xcommand(void) {
+  uint8_t  *str = command_buffer + 3;
+  uint16_t addr;
+  uint8_t  drive = MD_NO_SLOT;
+
+  switch (command_buffer[2]) {
+  case '+':
+    xv_add(str);
+    return;
+
+  case '-':
+    if (!*str) {
+      md_reinit(MD_LOAD_NEVER);
+      set_error(ERROR_OK);
+      return;
+    }
+    if (!isdigit(*str))
+      break;
+    addr = parse_number(&str);
+    if (*str == ':') {
+      str++;
+      if (!isdigit(*str))
+        break;
+      drive = *str++ - '0';
+    }
+    if (*str || (addr && (addr < 4 || addr > 30)))
+      break;
+    xv_delete(addr, drive);
+    return;
+
+  case 'L':
+    if (*str)
+      break;
+    if (md_reinit(MD_LOAD_FORCE))
+      set_error(ERROR_FILE_NOT_FOUND);
+    else
+      set_error(md_active ? ERROR_OK : ERROR_SYNTAX_UNKNOWN);
+    return;
+
+  case 'A':
+    if (*str == '+')
+      globalflags &= (uint8_t)~MD_NOAUTO;
+    else if (*str == '-')
+      globalflags |= MD_NOAUTO;
+    else
+      break;
+    set_error_ts(ERROR_STATUS, MD_CUR_ADDRESS, 0);
+    return;
+  }
+
+  set_error(ERROR_SYNTAX_UNKNOWN);
 }

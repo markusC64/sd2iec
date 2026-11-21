@@ -122,6 +122,10 @@ void read_configuration(void) {
      compile-time defaults set above, don't touch the EEPROM */
   if (eeprom_config_ignored) {
     uart_puts_P(PSTR("EEPROM config ignored, using defaults\r\n"));
+#ifdef CONFIG_MULTIDRIVE
+    /* as if XVA- was saved: a DRIVES.CFG on the card is not read */
+    globalflags |= MD_NOAUTO;
+#endif
     return;
   }
 

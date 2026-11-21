@@ -2724,6 +2724,13 @@ static void parse_xcommand(void) {
 #endif
     break;
 
+#ifdef CONFIG_MULTIDRIVE
+  case 'V':
+    /* Multi-drive: drives by command, DRIVES.CFG on/off */
+    md_xcommand();
+    break;
+#endif
+
   case 'R':
     /* Set Rom-file */
     if (command_buffer[2] == ':') {

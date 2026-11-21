@@ -49,6 +49,9 @@ extern uint8_t globalflagsInt;
 #define EXTENSION_HIDING (1<<3)
 #define POSTMATCH        (1<<4)
 #define FASTFORMAT       (1<<6)
+#define MD_NOAUTO        (1<<2) /* XVA-: DRIVES.CFG is not read at power-on and */
+                                /* card change. Set means off, so an EEPROM     */
+                                /* without it keeps reading the file.           */
 /* The transient flags above are in globalflagsInt, a name space of their */
 /* own now. Older firmware kept them in this byte, so an EEPROM saved by  */
 /* it can have bit 2 or 5 set, and patches that add flags (LCD) may take  */
