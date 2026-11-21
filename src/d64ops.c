@@ -30,6 +30,7 @@
 #include "dirent.h"
 #include "errormsg.h"
 #include "fatops.h"
+#include "multidrive.h"
 #include "ff.h"
 #include "parser.h"
 #include "progmem.h"
@@ -2340,9 +2341,13 @@ static uint8_t d64_chdir(path_t *path, cbmdirent_t *dirname) {
                    parent, 2))
       return 1;
 
-    if (parent[0] == 0)
-      /* Already at the root directory */
+    if (parent[0] == 0) {
+      /* Already at the root directory, unmount unless a */
+      /* multi-drive slot is confined to this image       */
+      if (md_root_locked(path->part))
+        return 0;
       return image_unmount(path->part);
+    }
 
     path->dir.dxx.track  = parent[0];
     path->dir.dxx.sector = parent[1];

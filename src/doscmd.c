@@ -635,7 +635,7 @@ static void save_capbuffer(void) {
   *ptr++ = 'p';
   *ptr   = 0;
 
-  FRESULT res = f_open(partition[0].fatfs, &datafile, ops_scratch, FA_WRITE | FA_CREATE_ALWAYS);
+  FRESULT res = f_open(part_fatfs(0), &datafile, ops_scratch, FA_WRITE | FA_CREATE_ALWAYS);
   if (res == FR_OK) {
     UINT byteswritten;
 
@@ -1224,8 +1224,8 @@ static void parse_changepart(void) {
   uint8_t part;
 
 #ifdef CONFIG_MULTIDRIVE
-  /* partitions are drives in multi-drive mode */
-  if (md_active) {
+  /* CBM DOS 2 drives have no partitions to change */
+  if (md_active && md_dev[md_cur].dual) {
     set_error(ERROR_SYNTAX_UNKNOWN);
     return;
   }
@@ -1237,7 +1237,7 @@ static void parse_changepart(void) {
     part = parse_partition(&str);
   } else {
     /* Shift-P - binary version */
-    part = command_buffer[2] - 1;
+    part = md_number_part(command_buffer[2]);
   }
 
   if(part>=max_part) {
@@ -1253,7 +1253,7 @@ static void parse_changepart(void) {
 
   display_current_part(current_part);
 
-  set_error_ts(ERROR_PARTITION_SELECTED, part+1, 0);
+  set_error_ts(ERROR_PARTITION_SELECTED, md_part_number(part), 0);
 }
 
 
@@ -1369,7 +1369,7 @@ static void parse_getpartition(void) {
   }
 
   if (command_length == 3 || command_buffer[3] == 0xff)
-    part = current_part + 1;
+    part = md_part_number(current_part);
   else
     part = command_buffer[3];
 
@@ -1380,19 +1380,18 @@ static void parse_getpartition(void) {
   error_buffer[30] = 13;
   ptr = error_buffer;
 
-  if (part > max_part) {
-    /* Nonexisting partition - return empty answer */
-    ptr[30] = 13;
-    return;
-  }
-
   if (part == 0) {
     /* System partition - return static info */
     memcpy_P(ptr, system_partition_info, sizeof(system_partition_info));
     return;
   }
 
-  part -= 1;
+  part = md_number_part(part);
+  if (part >= max_part) {
+    /* Nonexisting partition - return empty answer */
+    ptr[30] = 13;
+    return;
+  }
 
   /* Create partition info */
   if (partition[part].fop == &d64ops) {
@@ -1404,7 +1403,7 @@ static void parse_getpartition(void) {
   }
   *ptr++ = 0xe2; // 1.6MB disk - "reserved" for HD
 
-  *ptr++ = part+1;
+  *ptr++ = md_part_number(part);
 
   /* Read partition label */
   memset(ptr, 0xa0, 16);
@@ -1418,9 +1417,9 @@ static void parse_getpartition(void) {
     *outptr++ = *inptr++;
 
   ptr += 16;
-  *ptr++ = (partition[part].fatfs->fatbase >> 16) & 0xff;
-  *ptr++ = (partition[part].fatfs->fatbase >>  8) & 0xff;
-  *ptr++ = (partition[part].fatfs->fatbase      ) & 0xff;
+  *ptr++ = (part_fatfs(part)->fatbase >> 16) & 0xff;
+  *ptr++ = (part_fatfs(part)->fatbase >>  8) & 0xff;
+  *ptr++ = (part_fatfs(part)->fatbase      ) & 0xff;
   ptr += 5; // reserved bytes
 
   uint32_t size;
@@ -1431,7 +1430,7 @@ static void parse_getpartition(void) {
 
   } else {
     /* return the size of the FAT partition */
-    size = (partition[part].fatfs->max_clust - 1) * partition[part].fatfs->csize;
+    size = (part_fatfs(part)->max_clust - 1) * part_fatfs(part)->csize;
   }
 
   if (size > 0xffffff)
@@ -1487,18 +1486,18 @@ static void handle_memread(void) {
 
   if (address >= 0x8000 && rom_filename[0] != 0) {
     /* Try to use the rom file as data source - look in the current dir first */
-    partition[current_part].fatfs->curr_dir = partition[current_part].current_dir.fat;
-    res = f_open(partition[current_part].fatfs, &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
+    part_fatfs(current_part)->curr_dir = partition[current_part].current_dir.fat;
+    res = f_open(part_fatfs(current_part), &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
 
     if (res != FR_OK) {
       /* Not successful, try root dir */
-      partition[current_part].fatfs->curr_dir = 0;
-      res = f_open(partition[current_part].fatfs, &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
+      part_fatfs(current_part)->curr_dir = 0;
+      res = f_open(part_fatfs(current_part), &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
 
       if (res != FR_OK) {
         /* Not successful, try root of drive 0 */
-        partition[0].fatfs->curr_dir = 0;
-        res = f_open(partition[0].fatfs, &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
+        part_fatfs(0)->curr_dir = 0;
+        res = f_open(part_fatfs(0), &romfile, rom_filename, FA_READ | FA_OPEN_EXISTING);
 
         if (res != FR_OK)
           /* No file available - use internal table */
@@ -2720,7 +2719,7 @@ static void parse_xcommand(void) {
     write_configuration();
     set_error_ts(ERROR_STATUS,MD_CUR_ADDRESS,0);
 #ifdef CONFIG_MULTIDRIVE
-    /* address changes of the addressed device go to PETSD.CFG */
+    /* address changes of the addressed device go to DRIVES.CFG */
     md_store_address();
 #endif
     break;

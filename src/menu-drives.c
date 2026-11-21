@@ -18,10 +18,12 @@
 
    menu-drives.c: The "Configure drives" menu of the multi-drive support
 
-   Shows all devices and drives of PETSD.CFG, lets the user change
-   addresses, add and remove drives and devices and writes the file
-   line by line, keeping comments. Without a configuration file the
-   single legacy device is shown; as long as nothing but its address
+   Shows all devices and drives of DRIVES.CFG, lets the user change
+   addresses and drive numbers, add and remove drives and devices and
+   writes the file
+   line by line, keeping comments. Address 0 is the own address of the
+   device (shown as *<address>), changing it changes the EEPROM address.
+   Without a configuration file the single legacy device is shown; as long as nothing but its address
    changes, the address is stored in the EEPROM as before and no file
    is created.
 
@@ -49,8 +51,8 @@
 /* from menu.c */
 uint8_t menu_edit_value(uint8_t v, uint8_t min, uint8_t max);
 
-#define PATH_BUFFERS  (MD_DRIVES * MD_MAX_DEVICES * MD_PATH_MAX / 256)
-#define PATH_SLOTS    (MD_DRIVES * MD_MAX_DEVICES)
+#define PATH_BUFFERS  ((MD_MAX_SLOTS * MD_PATH_MAX + 255) / 256)
+#define PATH_SLOTS    MD_MAX_SLOTS
 #define NONE          0xff
 
 /* list rows after the drives */
@@ -59,19 +61,20 @@ uint8_t menu_edit_value(uint8_t v, uint8_t min, uint8_t max);
 #define ROW_EXIT      0xff
 
 /* entries of the drive submenu */
-enum { SUB_BACK, SUB_CHOOSE, SUB_ADDRESS, SUB_ADD_DRIVE1, SUB_DEL_DRIVE1,
-       SUB_DEL_DEVICE };
+enum { SUB_BACK, SUB_CHOOSE, SUB_ADDRESS, SUB_DRIVENUM, SUB_ADD_DRIVE,
+       SUB_DEL_DRIVE, SUB_DEL_DEVICE };
 
 typedef struct {
   md_edit_t tab[MD_EDIT_MAX];
   uint8_t   count;                 /* used entries of tab              */
   uint8_t   rows[MD_EDIT_MAX + 3]; /* list row -> tab index or ROW_*   */
   uint8_t   nrows;
-  uint8_t   sub[6];                /* submenu row -> SUB_*             */
+  uint8_t   sub[7];                /* submenu row -> SUB_*             */
   uint8_t   sub_entry;             /* tab index the submenu is about   */
-  uint8_t   slots_used;            /* bit mask of used path slots      */
-  uint8_t   had_lines;             /* PETSD.CFG had drive lines        */
+  uint16_t  slots_used;            /* bit mask of used path slots      */
+  uint8_t   had_lines;             /* DRIVES.CFG had drive lines       */
   uint8_t   file_exists;
+  uint8_t   own_address;           /* address of device 0 (EEPROM)     */
   buffer_t  *bufs[1 + PATH_BUFFERS];
 } state_t;
 
@@ -88,8 +91,8 @@ static uint8_t *slot_ptr(uint8_t k) {
 /* get storage for a path, NULL if all are used */
 static uint8_t *alloc_path(void) {
   for (uint8_t k = 0; k < PATH_SLOTS; k++) {
-    if (!(st->slots_used & (1 << k))) {
-      st->slots_used |= 1 << k;
+    if (!(st->slots_used & (1U << k))) {
+      st->slots_used |= 1U << k;
       return slot_ptr(k);
     }
   }
@@ -99,7 +102,7 @@ static uint8_t *alloc_path(void) {
 static void free_path(uint8_t *p) {
   for (uint8_t k = 0; k < PATH_SLOTS; k++)
     if (slot_ptr(k) == p)
-      st->slots_used &= ~(1 << k);
+      st->slots_used &= ~(1U << k);
 }
 
 static uint8_t is_live(uint8_t i) {
@@ -115,14 +118,64 @@ static uint8_t find_live(uint8_t address, uint8_t drive) {
   return NONE;
 }
 
+/* number of drives of a device */
+static uint8_t count_drives(uint8_t address) {
+  uint8_t n = 0;
+
+  for (uint8_t i = 0; i < st->count; i++)
+    if (is_live(i) && st->tab[i].address == address)
+      n++;
+  return n;
+}
+
 static uint8_t device_exists(uint8_t address) {
-  return find_live(address, 0) != NONE || find_live(address, 1) != NONE;
+  return count_drives(address) != 0;
+}
+
+/* addresses of the list: the own address (0), then 4..30 */
+#define FOR_ADDRESSES(a) for (uint8_t a = 0; a <= 30; a = a ? a + 1 : 4)
+
+/* an address is taken by a device or by the own address of device 0 */
+static uint8_t address_in_use(uint8_t address) {
+  return device_exists(address) ||
+         (address == st->own_address && device_exists(0));
+}
+
+/**
+ * drive_allowed - check if a device may get a drive number
+ * @address: device address
+ * @drive  : drive number
+ * @except : table index to ignore (the entry being renumbered) or NONE
+ *
+ * The number must be free. With drive 0 the device is a CBM DOS 2
+ * single or dual drive, so only 0 and 1 go together; drives 2..9 are
+ * CMD style partitions and exclude drive 0.
+ */
+static uint8_t drive_allowed(uint8_t address, uint8_t drive, uint8_t except) {
+  for (uint8_t i = 0; i < st->count; i++) {
+    md_edit_t *e = &st->tab[i];
+
+    if (i == except || !is_live(i) || e->address != address)
+      continue;
+    if (e->drive == drive ||
+        (drive == 0 && e->drive > 1) || (drive > 1 && e->drive == 0))
+      return 0;
+  }
+  return 1;
+}
+
+/* the drive number a new drive of a device gets, NONE if none fits */
+static uint8_t next_drive(uint8_t address) {
+  for (uint8_t d = 1; d <= MD_MAX_DRIVE; d++)
+    if (drive_allowed(address, d, NONE))
+      return d;
+  return NONE;
 }
 
 static uint8_t count_devices(void) {
   uint8_t n = 0;
 
-  for (uint8_t a = 4; a <= 30; a++)
+  FOR_ADDRESSES(a)
     if (device_exists(a))
       n++;
   return n;
@@ -149,6 +202,7 @@ static uint8_t add_entry(uint8_t address, uint8_t drive) {
   path[1] = 0;
 
   st->tab[i].file_address = 0;
+  st->tab[i].file_drive   = drive;
   st->tab[i].drive        = drive;
   st->tab[i].address      = address;
   st->tab[i].flags        = 0;
@@ -230,8 +284,8 @@ static uint8_t choose(uint8_t count, uint8_t pos, void (*draw)(uint8_t)) {
 static void build_rows(void) {
   uint8_t n = 0, i;
 
-  for (uint8_t a = 4; a <= 30; a++) {
-    for (uint8_t d = 0; d < MD_DRIVES; d++) {
+  FOR_ADDRESSES(a) {
+    for (uint8_t d = 0; d <= MD_MAX_DRIVE; d++) {
       i = find_live(a, d);
       if (i != NONE)
         st->rows[n++] = i;
@@ -254,11 +308,13 @@ static void draw_row(uint8_t r) {
   case ROW_EXIT: lcd_puts_P(PSTR("Exit without saving")); return;
   }
 
-  /* "#10 0:/SPIELE" or "    1:/SPIELE" below drive 0 */
+  /* "#10 0:/SPIELE" or "    1:/SPIELE" below the first drive */
   e = &st->tab[i];
-  if (e->drive == 0 || find_live(e->address, 0) == NONE) {
-    lcd_printf("#%d", e->address);
-    if (e->address < 10)
+  if (r == 0 || st->tab[st->rows[r - 1]].address != e->address) {
+    uint8_t a = e->address ? e->address : st->own_address;
+
+    lcd_printf(e->address ? "#%d" : "*%d", a);
+    if (a < 10)
       lcd_putc(' ');
     lcd_putc(' ');
   } else {
@@ -273,19 +329,28 @@ static void draw_row(uint8_t r) {
 /* ------------------------------------------------------------------ */
 
 static void change_address(uint8_t address) {
-  uint8_t v;
+  uint8_t v, cur = address ? address : st->own_address;
 
   lcd_clear();
-  lcd_printf("Change address\nfrom %02d to:", address);
+  if (address)
+    lcd_printf("Change address\nfrom %02d to:", cur);
+  else
+    lcd_printf("Change own addr.\nfrom %02d to:", cur);
   lcd_locate(12, 1);
-  v = menu_edit_value(address, 8, 30);
-  if (v == address)
+  v = menu_edit_value(cur, 8, 30);
+  if (v == cur)
     return;
 
-  if (device_exists(v)) {
+  if (address ? address_in_use(v) : device_exists(v)) {
     lcd_clear();
     lcd_printf("#%d is in use\n\nPress any key", v);
     wait_key();
+    return;
+  }
+
+  /* device 0 keeps its 0, the EEPROM address changes when saving */
+  if (!address) {
+    st->own_address = v;
     return;
   }
 
@@ -304,7 +369,7 @@ static void add_device(void) {
   uint8_t a;
 
   for (a = 8; a <= 30; a++)
-    if (!device_exists(a))
+    if (!address_in_use(a))
       break;
   if (a > 30 || add_entry(a, 0) == NONE)
     no_space();
@@ -315,7 +380,10 @@ static void add_device(void) {
 /* ------------------------------------------------------------------ */
 
 /* The picker reads the FAT volume directly, so the drives keep their */
-/* current directories and images while the user looks around.       */
+/* current directories and images while the user looks around. Names  */
+/* are shown and stored like the computer shows them in the default   */
+/* naming mode: the long name if it fits into 16 characters, else the */
+/* 8.3 name.                                                          */
 
 #define PICK_DEPTH    8               /* directory levels below the root */
 #define PICK_FIXED    3               /* back, use, parent               */
@@ -327,6 +395,7 @@ typedef struct {
   uint8_t  path[MD_PATH_MAX];         /* ASCII path of the directory     */
   uint32_t parent[PICK_DEPTH];        /* clusters of the directories up  */
   uint32_t cluster;                   /* current directory, 0 = root     */
+  uint8_t  vol;                       /* FAT volume (partition - 1)      */
   uint8_t  depth;
   uint8_t  ndirs;                     /* directories shown               */
   uint8_t  nimgs;                     /* images shown                    */
@@ -339,7 +408,7 @@ static pick_t *pk;
  * pick_entry - find a directory or image in the current directory
  * @want_dir: 1 for the n-th directory, 0 for the n-th image
  * @n       : number of the entry, counting from 0, or 0xff to count
- * @name    : receives the name as used in PETSD.CFG, may be NULL
+ * @name    : receives the name as used in DRIVES.CFG, may be NULL
  * @cluster : receives the start cluster, may be NULL
  *
  * The name is the long name if it fits into 16 characters like the
@@ -354,7 +423,7 @@ static uint8_t pick_entry(uint8_t want_dir, uint8_t n, uint8_t *name,
   uint8_t count = 0, *fname;
 
   fi.lfn = pk->lfn;
-  if (l_opendir(&fatvol[0], pk->cluster, &dir) != FR_OK)
+  if (l_opendir(&fatvol[pk->vol], pk->cluster, &dir) != FR_OK)
     return 0;
 
   while (f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
@@ -404,7 +473,12 @@ static void draw_pick(uint8_t r) {
   }
   if (r == ROW_P_USE) {
     lcd_puts_P(PSTR("Use "));
-    put_path(pk->path, LCD_COLS - 4);
+    if (pk->vol) {
+      lcd_putc('1' + pk->vol);
+      put_path(pk->path, LCD_COLS - 5);
+    } else {
+      put_path(pk->path, LCD_COLS - 4);
+    }
     return;
   }
   if (r < fixed) {
@@ -441,11 +515,27 @@ static uint8_t pick_append(uint8_t *path, uint8_t *name) {
 }
 
 /* take a path for drive entry e, an unchanged path keeps the line as is */
+/* Partitions after the first get their number in front: "2/GAMES".    */
 static void pick_take(md_edit_t *e, uint8_t *path) {
-  if (ustrcmp(e->path, path) == 0)
+  uint8_t *dst = e->path;
+
+  if (pk->vol) {
+    if (*dst == '1' + pk->vol && ustrcmp(dst + 1, path) == 0)
+      return;
+    *dst++ = '1' + pk->vol;
+  } else if (ustrcmp(dst, path) == 0) {
     return;
-  ustrcpy(e->path, path);
+  }
+  ustrcpy(dst, path);
   e->flags |= MDE_NEWPATH;
+}
+
+/* partition list of the picker: back and the partitions of the card */
+static void draw_vol(uint8_t r) {
+  if (r == 0)
+    lcd_puts_P(PSTR("< Back"));
+  else
+    lcd_printf("Partition %d", r);
 }
 
 /* returns 1 if a path was taken, 0 if the user went back */
@@ -468,6 +558,15 @@ static uint8_t pick_path(md_edit_t *e) {
   pk = (pick_t *)b->data;
   memset(pk, 0, sizeof(pick_t));
   pk->path[0] = '/';
+
+  /* several partitions on the card: choose one first */
+  if (md_volumes > 1) {
+    r = choose(md_volumes + 1, 1, draw_vol);
+    if (r == 0)
+      goto done;
+    pk->vol = r - 1;
+    r = 0;
+  }
   pick_count();
 
   for (;;) {
@@ -526,6 +625,7 @@ static uint8_t pick_path(md_edit_t *e) {
     }
   }
 
+ done:
   free_buffer(b);
   pk = NULL;
   return taken;
@@ -536,19 +636,46 @@ static void draw_sub(uint8_t r) {
 
   switch (st->sub[r]) {
   case SUB_BACK:
-    lcd_printf("< #%d drive %d", e->address, e->drive);
+    if (e->address)
+      lcd_printf("< #%d drive %d", e->address, e->drive);
+    else
+      lcd_printf("< *%d drive %d", st->own_address, e->drive);
     break;
   case SUB_CHOOSE:     lcd_puts_P(PSTR("Choose dir/image")); break;
   case SUB_ADDRESS:    lcd_puts_P(PSTR("Change address")); break;
-  case SUB_ADD_DRIVE1: lcd_puts_P(PSTR("Add drive 1"));    break;
-  case SUB_DEL_DRIVE1: lcd_puts_P(PSTR("Remove drive 1")); break;
+  case SUB_DRIVENUM:   lcd_puts_P(PSTR("Change drive no.")); break;
+  case SUB_ADD_DRIVE:  lcd_puts_P(PSTR("Add drive"));      break;
+  case SUB_DEL_DRIVE:  lcd_puts_P(PSTR("Remove drive"));   break;
   case SUB_DEL_DEVICE: lcd_puts_P(PSTR("Remove device"));  break;
   }
 }
 
+/* change the drive number of entry e */
+static void change_drive(md_edit_t *e, uint8_t i) {
+  uint8_t v;
+
+  lcd_clear();
+  lcd_printf("Change drive no.\nfrom %d to:", e->drive);
+  lcd_locate(12, 1);
+  v = menu_edit_value(e->drive, 0, MD_MAX_DRIVE);
+  if (v == e->drive)
+    return;
+
+  if (!drive_allowed(e->address, v, i)) {
+    lcd_clear();
+    lcd_printf("Drive %d is not\npossible here\n\nPress any key", v);
+    wait_key();
+    return;
+  }
+
+  e->drive = v;
+  if (e->file_address)
+    e->flags |= MDE_NEWDRIVE;
+}
+
 static void drive_menu(uint8_t i) {
   md_edit_t *e = &st->tab[i];
-  uint8_t n, d1, start = 0;
+  uint8_t n, start = 0;
 
  again:
   n = 0;
@@ -556,12 +683,12 @@ static void drive_menu(uint8_t i) {
   st->sub[n++] = SUB_BACK;
   st->sub[n++] = SUB_CHOOSE;
   st->sub[n++] = SUB_ADDRESS;
-  d1 = find_live(e->address, 1);
-  if (e->drive == 1)
-    st->sub[n++] = SUB_DEL_DRIVE1;
-  else if (d1 == NONE)
-    st->sub[n++] = SUB_ADD_DRIVE1;
-  if (e->drive == 0 && count_devices() > 1)
+  st->sub[n++] = SUB_DRIVENUM;
+  if (next_drive(e->address) != NONE)
+    st->sub[n++] = SUB_ADD_DRIVE;
+  if (count_drives(e->address) > 1)
+    st->sub[n++] = SUB_DEL_DRIVE;
+  if (count_devices() > 1)
     st->sub[n++] = SUB_DEL_DEVICE;
 
   switch (st->sub[choose(n, start, draw_sub)]) {
@@ -576,19 +703,23 @@ static void drive_menu(uint8_t i) {
     change_address(e->address);
     break;
 
-  case SUB_ADD_DRIVE1:
-    if (add_entry(e->address, 1) == NONE)
+  case SUB_DRIVENUM:
+    change_drive(e, i);
+    break;
+
+  case SUB_ADD_DRIVE:
+    if (add_entry(e->address, next_drive(e->address)) == NONE)
       no_space();
     break;
 
-  case SUB_DEL_DRIVE1:
+  case SUB_DEL_DRIVE:
     remove_entry(i);
     break;
 
   case SUB_DEL_DEVICE:
-    if (d1 != NONE)
-      remove_entry(d1);
-    remove_entry(i);
+    for (n = 0; n < st->count; n++)
+      if (is_live(n) && st->tab[n].address == e->address)
+        remove_entry(n);
     break;
 
   default:
@@ -611,7 +742,8 @@ static uint8_t save(void) {
   /* Still the plain single drive without a file: EEPROM as before */
   if (!st->had_lines && live == 1 && st->tab[first].drive == 0 &&
       st->tab[first].path[0] == '/' && st->tab[first].path[1] == 0) {
-    device_address = st->tab[first].address;
+    device_address = st->tab[first].address ? st->tab[first].address
+                                            : st->own_address;
     write_configuration();
     return 1;
   }
@@ -624,6 +756,12 @@ static uint8_t save(void) {
     wait_key();
     return 0;
   }
+
+  /* the own address of device 0 lives in the EEPROM */
+  if (st->own_address != device_address) {
+    device_address = st->own_address;
+    write_configuration();
+  }
   return 2;
 }
 
@@ -633,8 +771,7 @@ static uint8_t save(void) {
 
 typedef struct {
   uint8_t n;
-  uint8_t dev[MD_MAX_DEVICES * MD_DRIVES];
-  uint8_t drive[MD_MAX_DEVICES * MD_DRIVES];
+  uint8_t slot[MD_MAX_SLOTS];
 } drvlist_t;
 
 static drvlist_t *dl;
@@ -645,7 +782,8 @@ static void draw_drv(uint8_t r) {
     return;
   }
   r--;
-  lcd_printf("#%d drive %d", md_dev[dl->dev[r]].address, dl->drive[r]);
+  lcd_printf("#%d drive %d", md_dev_address(md_slot_dev[dl->slot[r]]),
+             md_slot_drv[dl->slot[r]]);
 }
 
 /**
@@ -658,19 +796,17 @@ static void draw_drv(uint8_t r) {
  */
 uint8_t md_browse_select(void) {
   drvlist_t l;
-  uint8_t   i, d, r;
+  uint8_t   i, s, r;
 
+  /* the slots sorted by device and drive number */
   l.n = 0;
   for (i = 0; i < MD_MAX_DEVICES; i++) {
     if (!md_dev[i].address)
       continue;
-    for (d = 0; d < MD_DRIVES; d++) {
-      if (md_dev[i].slot[d] != MD_NO_SLOT) {
-        l.dev[l.n]   = i;
-        l.drive[l.n] = d;
-        l.n++;
-      }
-    }
+    for (r = 0; r <= MD_MAX_DRIVE; r++)
+      for (s = 0; s < md_slots; s++)
+        if (md_slot_dev[s] == i && md_slot_drv[s] == r)
+          l.slot[l.n++] = s;
   }
   if (l.n == 0)
     return 0;
@@ -686,8 +822,8 @@ uint8_t md_browse_select(void) {
     r--;
   }
 
-  md_select(l.dev[r]);
-  current_part = md_dev[l.dev[r]].slot[l.drive[r]];
+  md_select(md_slot_dev[l.slot[r]]);
+  current_part = l.slot[r];
   return 1;
 }
 
@@ -723,11 +859,12 @@ void menu_drives(void) {
     st->tab[i].path = slot_ptr(i);
   st->count = md_edit_load(st->tab, PATH_SLOTS, &st->file_exists);
   st->had_lines = (st->count > 0);
-  st->slots_used = (1 << st->count) - 1;
+  st->slots_used = (1U << st->count) - 1;
   for (i = st->count; i < PATH_SLOTS; i++)
     st->tab[i].path = NULL;
+  st->own_address = device_address;
   if (st->count == 0)
-    add_entry(device_address, 0);
+    add_entry(0, 0);            // the device itself with its own address
 
   for (;;) {
     build_rows();

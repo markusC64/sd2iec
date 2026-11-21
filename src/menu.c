@@ -138,8 +138,10 @@ void lcd_update_device_addr(void) {
       uint8_t i, col = 0;
       for (i = 0; i < MD_MAX_DEVICES; i++) {
         if (md_dev[i].address) {
-          lcd_printf("#%d ", md_dev[i].address);
-          col += md_dev[i].address < 10 ? 3 : 4;
+          uint8_t a = md_dev_address(i);
+
+          lcd_printf("#%d ", a);
+          col += a < 10 ? 3 : 4;
         }
       }
       while (col++ < 16)
@@ -903,7 +905,8 @@ LOAD:
   browse_path.dir  = partition[current_part].current_dir;
   // No "Change to parent dir" in the FAT card root (nothing above it).
   // Inside an image, ".." unmounts back to FAT, so keep the parent row there.
-  nav_rows = (browse_is_fat && browse_path.dir.fat == 0) ? 1 : 2;
+  nav_rows = (browse_is_fat &&
+              browse_path.dir.fat == md_root_cluster(current_part)) ? 1 : 2;
   if (ret_pending_valid) { build_view_restore(&bstate->rpending); ret_pending_valid = false; }
   else if (!browse_is_fat) wrap_to_top();   // entered an image: start the cursor on "Exit menu", not the first file
   else                     build_view_top();

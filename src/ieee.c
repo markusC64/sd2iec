@@ -761,7 +761,6 @@ void handle_ieee488(void) {
   uint8_t cmd, cmd3, cmd4;              // Received IEEE-488 command byte
   uint8_t Device;                       // device number from cmd byte
   uint8_t sa;                           // secondary address from cmd byte
-  uint8_t dev;                          // index of the addressed device
 
   // If IFC was received during last iteration, reset bus interface now
   if (ieee488_IFCreceived || ieee488_CheckIFC()) ieee488_ProcessIFC();
@@ -822,8 +821,8 @@ void handle_ieee488(void) {
     else if (cmd == IEEE_UNTALK)          // UNTALK
       ieee488_Untalk();
     else if (cmd3 == IEEE_LISTEN) {       // LISTEN
-      if ((dev = md_find(Device)) != MD_NO_DEVICE) {
-        md_select(dev);
+      if (md_is_address(Device)) {
+        md_select(md_find(Device));
         uart_puts_P(PSTR("LSN\r\n"));
         ieee488_ListenActive = Device;
         // Override talk state because we can't be
@@ -831,8 +830,8 @@ void handle_ieee488(void) {
         ieee488_TalkingDevice = 0;
       }
     } else if (cmd3 == IEEE_TALK) {       // TALK
-      if ((dev = md_find(Device)) != MD_NO_DEVICE) {
-        md_select(dev);
+      if (md_is_address(Device)) {
+        md_select(md_find(Device));
         uart_puts_P(PSTR("TLK\r\n"));
         ieee488_TalkingDevice = Device;
         // Override listen state because we can't be

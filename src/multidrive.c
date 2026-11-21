@@ -18,18 +18,34 @@
 
    multidrive.c: Multi-drive support
 
-   The configuration file PETSD.CFG in the root directory of the card
+   The configuration file DRIVES.CFG in the root directory of the card
    assigns a directory or disk image to each drive, one per line:
 
      # comment
-     8:0 = /
-     8:1 = /GAMES/ARCHON.D64
-     9:0 = /WORK
+     8:0 = //
+     8:1 = //GAMES/ARCHON.D64
+     9:1 = //WORK/
+     9:2 = 2//BACKUP/
+     0:1 = //GAMES/
 
-   Each configured drive gets its own slot in partition[]. All slots
-   share the FAT volume of the first partition on the card. Without a
-   configuration file nothing changes and the legacy single drive
-   behaviour is kept.
+   Address 0 is the device address of the SD2IEC itself (EEPROM, U0>,
+   XW): a single device with several drives keeps its address. Lines
+   with that address written as number belong to the same device then.
+
+   The path uses the syntax of the CD command, as typed on the computer
+   (names as the computer shows them, written in ASCII), and starts at
+   the root directory of a partition of the card. A partition number in
+   front of it selects the partition, the first one is the default.
+
+   A device with drive 0 has CBM DOS 2 semantics: single drive or dual
+   drive with drive 0 and 1. A device without drive 0 has CMD semantics:
+   its drives are partitions 1..9, partition 0 is the current one and
+   CP selects it.
+
+   The drives of all devices come from a pool of MD_MAX_SLOTS slots in
+   partition[], each pointing to the FAT volume of its partition.
+   Without a configuration file nothing changes and the legacy single
+   drive behaviour is kept.
 
 */
 
@@ -50,41 +66,66 @@
 
 uint8_t     md_active;
 md_device_t md_dev[MD_MAX_DEVICES];
+uint8_t     md_slot_dev[MD_MAX_SLOTS];
+uint8_t     md_slot_drv[MD_MAX_SLOTS];
+uint32_t    md_slot_root[MD_MAX_SLOTS];
+uint16_t    md_slot_imgroot;
+uint8_t     md_slots;
+uint8_t     md_volumes;
 uint8_t     md_device_lost;
 uint8_t     md_layout_changed;
 uint8_t     md_cur;
 uint8_t     md_drive_given;
+static uint8_t md_merge_own;    /* lines with device_address go to device 0 */
 
-#define MD_MAX_SLOTS (MD_MAX_DEVICES * MD_DRIVES)
-
-#if MD_MAX_SLOTS >= CONFIG_MAX_PARTITIONS
-#  error CONFIG_MAX_PARTITIONS must be larger than MD_MAX_DEVICES * MD_DRIVES
-#endif
-
-#if MD_MAX_SLOTS > 9
-#  error The slot number must fit into a single digit for do_chdir
+#if MD_MAX_SLOTS < 2
+#  error CONFIG_MAX_PARTITIONS is too small for multi-drive support
 #endif
 
 /**
  * md_slot_drive - return the drive number of a partition slot
  * @part: partition index
  *
- * Returns 0 or 1 for a drive slot of the current device, otherwise
- * the drive number of the first device using this slot or 0.
+ * Returns the drive number from the configuration file, 0 for a
+ * partition that is not a drive slot.
  */
 uint8_t md_slot_drive(uint8_t part) {
+  if (part >= md_slots)
+    return 0;
+  return md_slot_drv[part];
+}
+
+/* slot of a drive of a device or MD_NO_SLOT */
+static uint8_t find_slot(uint8_t dev, uint8_t drive) {
   uint8_t i;
 
-  if (md_dev[md_cur].slot[1] == part)
-    return 1;
-  if (md_dev[md_cur].slot[0] == part)
-    return 0;
+  for (i = 0; i < md_slots; i++)
+    if (md_slot_dev[i] == dev && md_slot_drv[i] == drive)
+      return i;
+  return MD_NO_SLOT;
+}
 
-  for (i = 0; i < MD_MAX_DEVICES; i++)
-    if (md_dev[i].slot[1] == part)
-      return 1;
+/**
+ * md_drive_slot - return the partition index of a drive number
+ * @drive: drive number of the current device
+ *
+ * With CMD semantics drive 0 is the current partition. Returns
+ * MD_NO_SLOT if the current device has no such drive.
+ */
+uint8_t md_drive_slot(uint8_t drive) {
+  if (drive == 0 && !md_dev[md_cur].dual)
+    return current_part;
+  return find_slot(md_cur, drive);
+}
 
-  return 0;
+/**
+ * md_is_dual - check for a CBM DOS 2 dual drive
+ *
+ * Returns non-zero if the current device has drive 0 and drive 1.
+ */
+uint8_t md_is_dual(void) {
+  return md_active && md_dev[md_cur].dual &&
+         find_slot(md_cur, 1) != MD_NO_SLOT;
 }
 
 /**
@@ -101,7 +142,7 @@ uint8_t md_find(uint8_t addr) {
     return addr == device_address ? 0 : MD_NO_DEVICE;
 
   for (i = 0; i < MD_MAX_DEVICES; i++)
-    if (md_dev[i].address && md_dev[i].address == addr)
+    if (md_dev[i].address && md_dev_address(i) == addr)
       return i;
 
   return MD_NO_DEVICE;
@@ -111,9 +152,9 @@ uint8_t md_find(uint8_t addr) {
  * md_select - make a device the current one
  * @idx: index in md_dev
  *
- * Saves the error channel state of the previous device and restores
- * the one of the new device. The current partition becomes drive 0
- * of the new device, so all code using current_part works on it.
+ * Saves the current partition and the error channel state of the
+ * previous device and restores the ones of the new device, so all code
+ * using current_part works on it.
  */
 void md_select(uint8_t idx) {
   md_device_t *dev;
@@ -122,13 +163,14 @@ void md_select(uint8_t idx) {
     return;
 
   dev = &md_dev[md_cur];
+  dev->cur_part   = current_part;
   dev->err_code   = current_error;
   dev->err_track  = current_error_track;
   dev->err_sector = current_error_sector;
 
   md_cur       = idx;
   dev          = &md_dev[idx];
-  current_part = dev->slot[0];
+  current_part = dev->cur_part;
   set_error_ts(dev->err_code, dev->err_track, dev->err_sector);
 }
 
@@ -136,9 +178,10 @@ void md_select(uint8_t idx) {
  * md_set_address - change the bus address of the current device
  * @addr: new address
  *
- * The change lasts until the next restart or card change.
- * Returns 0 if successful, 1 if the address is out of range or
- * already used by another device.
+ * The change lasts until the next restart or card change. A device with
+ * address 0 in the file changes the address of the SD2IEC itself, so XW
+ * stores it in the EEPROM. Returns 0 if successful, 1 if the address is
+ * out of range or already used by another device.
  */
 uint8_t md_set_address(uint8_t addr) {
   if (addr < 4 || addr > 30)
@@ -147,46 +190,45 @@ uint8_t md_set_address(uint8_t addr) {
   if (md_find(addr) != MD_NO_DEVICE && md_find(addr) != md_cur)
     return 1;
 
+  if (!md_dev[md_cur].file_address)
+    device_address = addr;
   md_dev[md_cur].address = addr;
   return 0;
 }
 
-/* find the table entry for a device address, create it if required */
-static md_device_t *get_device(uint8_t address) {
+/* the device of an address in the file (0 = own address) */
+static uint8_t file_key(uint8_t address) {
+  return (md_merge_own && address == device_address) ? 0 : address;
+}
+
+/* index of the device with an address in the file or MD_NO_DEVICE */
+static uint8_t find_device(uint8_t file_address) {
   uint8_t i;
 
   for (i = 0; i < MD_MAX_DEVICES; i++)
-    if (md_dev[i].address == address)
-      return &md_dev[i];
+    if (md_dev[i].address && md_dev[i].file_address == file_address)
+      return i;
+  return MD_NO_DEVICE;
+}
 
-  for (i = 0; i < MD_MAX_DEVICES; i++)
-    if (md_dev[i].address == 0) {
-      md_dev[i].address      = address;
-      md_dev[i].file_address = address;
-      return &md_dev[i];
+/* find the device with an address in the file, create it if required */
+static uint8_t get_device(uint8_t file_address) {
+  uint8_t i = find_device(file_address);
+
+  if (i != MD_NO_DEVICE)
+    return i;
+
+  for (i = 0; i < MD_MAX_DEVICES; i++) {
+    if (!md_dev[i].address) {
+      md_dev[i].address      = file_address ? file_address : device_address;
+      md_dev[i].file_address = file_address;
+      return i;
     }
-
-  return NULL;
-}
-
-/**
- * cfg2pet - convert a path from the configuration file to PETSCII
- * @buf: 0-terminated string, converted in place
- *
- * Unlike asc2pet both upper and lower case letters become unshifted
- * PETSCII letters, just like a path typed on a C64. FAT names are
- * matched without case anyway, but check_imageext only recognizes
- * unshifted extensions, so "ARCHON.D64" must not turn into shifted
- * characters.
- */
-static void cfg2pet(uint8_t *buf) {
-  for (; *buf; buf++) {
-    if (*buf >= 'a' && *buf <= 'z')
-      *buf -= 'a' - 'A';
-    else if (*buf == '~')
-      *buf = 255;
   }
+  return MD_NO_DEVICE;
 }
+
+
 
 /* Start of a drive line: "<address> : <drive> = <path>" */
 typedef struct {
@@ -203,8 +245,9 @@ typedef struct {
  * @len : length of the line
  * @h   : receives the parsed values
  *
- * Returns 1 for a drive line with an address of 4..30, 0 for comments,
- * blank lines and everything else.
+ * Returns 1 for a drive line with an address of 4..30 or 0 (the own
+ * address) and a drive number of 0..9, 0 for comments, blank lines and
+ * everything else.
  */
 static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
   uint16_t i = 0;
@@ -217,14 +260,15 @@ static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
   while (i < len && isdigit(line[i]) && i - h->addr_start < 3)
     h->address = h->address * 10 + (line[i++] - '0');
   h->addr_len = i - h->addr_start;
-  if (h->addr_len == 0 || h->address < 4 || h->address > 30)
+  if (h->addr_len == 0 ||
+      (h->address != 0 && (h->address < 4 || h->address > 30)))
     return 0;
 
   BLANKS();
   if (i >= len || line[i++] != ':')
     return 0;
   BLANKS();
-  if (i >= len || (line[i] != '0' && line[i] != '1'))
+  if (i >= len || !isdigit(line[i]))
     return 0;
   h->drive = line[i++] - '0';
 
@@ -253,36 +297,58 @@ static void strip_trailing(uint8_t *str) {
  * @slot : next free partition slot
  *
  * Returns 1 if a slot was used, 0 otherwise. The line buffer must be
- * the command buffer, it is modified in place.
+ * the command buffer, it is modified in place. md_active must be 0, so
+ * the legacy partition syntax of do_chdir reaches every slot.
  */
 static uint8_t apply_line(uint8_t *line, uint8_t slot) {
-  uint8_t *path;
+  uint8_t *path, *p, vol = 0;
+  uint8_t dev;
   md_head_t h;
-  md_device_t *dev;
 
   if (!parse_head(line, ustrlen(line), &h))
     return 0;
   path = line + h.path_start;
   strip_trailing(path);
 
-  dev = get_device(h.address);
-  if (dev == NULL || dev->slot[h.drive] != MD_NO_SLOT)
+  /* devices were created in the first pass, drive 0 made them dual */
+  dev = find_device(file_key(h.address));
+  if (dev == MD_NO_DEVICE || (md_dev[dev].dual && h.drive > 1) ||
+      find_slot(dev, h.drive) != MD_NO_SLOT)
     return 0;
 
-  /* Build a legacy CD string in front of the path: "<slot+1>//path" */
-  /* At least four characters ("8:0=") precede the path.              */
-  if (*path == '/') {
-    path -= 2;
+  /* optional partition number in front, like in the CD command */
+  for (p = path; isdigit(*p) && p - path < 2; p++)
+    vol = vol * 10 + (*p - '0');
+  if (p != path && (*p == 0 || *p == ':' || *p == '/')) {
+    path = p;
+    if (vol)
+      vol--;                    // 0 is the current one: the first here
   } else {
-    path -= 3;
+    vol = 0;
+  }
+  if (vol >= md_volumes)
+    return 0;
+
+  /* Build a legacy CD string for the slot: "<slot+1>" and the path, */
+  /* which starts at the root. At least four characters ("8:0=")    */
+  /* precede the path.                                               */
+  if (path[0] == '/' && path[1] == '/') {
+    path -= 1;                  // "//DIR/"
+  } else if (path[0] == '/') {
+    path -= 2;                  // "/DIR/" from the root
+    path[1] = '/';
+  } else if (path[0] == ':') {
+    path -= 1;                  // ":NAME"
+  } else {
+    path -= 3;                  // "NAME", "DIR/NAME" or the root
+    path[1] = '/';
     path[2] = '/';
   }
   path[0] = '1' + slot;
-  path[1] = '/';
-  cfg2pet(path + 1);
+  asc2pet(path + 1);
 
-  /* reset the slot to the root directory of the first FAT volume */
-  partition[slot].fatfs           = &fatvol[0];
+  /* reset the slot to the root directory of the partition */
+  partition[slot].fatfs           = &fatvol[vol];
   partition[slot].fop             = &fatops;
   partition[slot].current_dir.fat = 0;
 
@@ -295,7 +361,15 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
     return 0;
   }
 
-  dev->slot[h.drive] = slot;
+  /* The slot is confined to this directory or image. For an image */
+  /* the FAT directory it is in becomes the root, in case the image */
+  /* is unmounted in some other way (e.g. by the disk swap list).   */
+  md_slot_root[slot] = partition[slot].current_dir.fat;
+  if (partition[slot].fop != &fatops)
+    md_slot_imgroot |= 1U << slot;
+
+  md_slot_dev[slot] = dev;
+  md_slot_drv[slot] = h.drive;
   return 1;
 }
 
@@ -344,7 +418,7 @@ static uint8_t read_line(FIL *fh, uint32_t *pos) {
 }
 
 /**
- * md_edit_load - read the drive lines of PETSD.CFG for editing
+ * md_edit_load - read the drive lines of DRIVES.CFG for editing
  * @tab   : table to fill, path pointers set by the caller
  * @max   : number of entries in tab
  * @exists: set to 1 if the file exists
@@ -370,7 +444,7 @@ uint8_t md_edit_load(md_edit_t *tab, uint8_t max, uint8_t *exists) {
     if (!parse_head(command_buffer, ustrlen(command_buffer), &h))
       continue;
     for (i = 0; i < count; i++)
-      if (tab[i].file_address == h.address && tab[i].drive == h.drive)
+      if (tab[i].file_address == h.address && tab[i].file_drive == h.drive)
         break;
     if (i < count)
       continue;
@@ -381,6 +455,7 @@ uint8_t md_edit_load(md_edit_t *tab, uint8_t max, uint8_t *exists) {
     tab[count].path[MD_PATH_MAX - 1] = 0;
     tab[count].file_address = h.address;
     tab[count].address      = h.address;
+    tab[count].file_drive   = h.drive;
     tab[count].drive        = h.drive;
     tab[count].flags        = 0;
     count++;
@@ -434,22 +509,25 @@ static FRESULT put_line(FIL *out, md_edit_t *e, uint8_t crlf) {
 }
 
 static const PROGMEM uint8_t cfg_header[] =
-  "# petSD+ drive configuration, written by the menu Configure drives\r\n"
-  "# Format: device:drive = path   (drive 0 or 1, path from the root)\r\n"
+  "# Drive configuration, written by the menu Configure drives\r\n"
+  "# Format: device:drive = path   (drive 0..9, path like CD, from the root)\r\n"
+  "# Drive 0: single/dual drive (0 and 1), otherwise partitions 1..9\r\n"
+  "# Device 0: the own address of the device (EEPROM)\r\n"
   "\r\n";
 
 /**
- * md_edit_save - write PETSD.CFG with changes, line by line
+ * md_edit_save - write DRIVES.CFG with changes, line by line
  * @tab   : changed drive lines
  * @count : number of entries in tab
  * @create: create the file if it does not exist
  *
  * Lines of entries with a file address get the new address, are
- * written anew (MDE_NEWPATH) or dropped (MDE_REMOVED). Entries without
- * a file address are appended. Comments, blank lines and all other
- * lines stay as they are. The new contents go to PETSD.TMP first,
- * which replaces PETSD.CFG at the end, so a card pulled in between
- * leaves the old file intact. Returns 0 if successful, otherwise the
+ * written anew (MDE_NEWPATH, MDE_NEWDRIVE) or dropped (MDE_REMOVED).
+ * MDE_ALLDRIVES entries match the lines of all drives of their file
+ * address. Entries without a file address are appended. Comments,
+ * blank lines and all other lines stay as they are. The new contents
+ * go to DRIVES.TMP first, which replaces DRIVES.CFG at the end, so a
+ * card pulled in between leaves the old file intact. Returns 0 if successful, otherwise the
  * error channel is set.
  */
 uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
@@ -513,7 +591,8 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
     e = NULL;
     if (!midline && parse_head(line, len, &h)) {
       for (i = 0; i < count; i++)
-        if (tab[i].file_address == h.address && tab[i].drive == h.drive) {
+        if (tab[i].file_address == h.address &&
+            ((tab[i].flags & MDE_ALLDRIVES) || tab[i].file_drive == h.drive)) {
           e = &tab[i];
           break;
         }
@@ -523,7 +602,7 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
       res = put(&out, line, len);
     } else if (e->flags & MDE_REMOVED) {
       /* drop the line */
-    } else if (e->flags & MDE_NEWPATH) {
+    } else if (e->flags & (MDE_NEWPATH | MDE_NEWDRIVE)) {
       res = put_line(&out, e, crlf);
     } else {
       /* only the address changes */
@@ -579,17 +658,19 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
  * md_store_address - store an address change of the current device
  *
  * Called by XW. If U0> or M-W 119 changed the address of the addressed
- * device, the drive lines of that device in PETSD.CFG get the new
+ * device, the drive lines of that device in DRIVES.CFG get the new
  * address. Other devices are not touched. If another device still has
  * the new address in the file, nothing is written (30 SYNTAX ERROR),
- * as both would become one device at the next start.
+ * as both would become one device at the next start. A device with
+ * address 0 in the file has the address of the SD2IEC itself, which
+ * XW stores in the EEPROM: the file stays as it is.
  */
 void md_store_address(void) {
   md_device_t *dev = &md_dev[md_cur];
-  md_edit_t   tab[MD_DRIVES];
+  md_edit_t   e;
   uint8_t     i;
 
-  if (!md_active || dev->address == dev->file_address)
+  if (!md_active || !dev->file_address || dev->address == dev->file_address)
     return;
 
   for (i = 0; i < MD_MAX_DEVICES; i++) {
@@ -600,15 +681,14 @@ void md_store_address(void) {
     }
   }
 
-  for (i = 0; i < MD_DRIVES; i++) {
-    tab[i].file_address = dev->file_address;
-    tab[i].drive        = i;
-    tab[i].address      = dev->address;
-    tab[i].flags        = 0;
-    tab[i].path         = NULL;
-  }
+  e.file_address = dev->file_address;
+  e.file_drive   = 0;
+  e.drive        = 0;
+  e.address      = dev->address;
+  e.flags        = MDE_ALLDRIVES;
+  e.path         = NULL;
 
-  if (md_edit_save(tab, MD_DRIVES, 0) == 0)
+  if (md_edit_save(&e, 1, 0) == 0)
     dev->file_address = dev->address;
 }
 
@@ -622,27 +702,33 @@ static void md_load(uint8_t prev_address) {
   FIL      fh;
   FRESULT  res;
   uint32_t pos;
-  uint8_t  i, slots;
+  uint8_t  i, d, pass;
   uint8_t  saved_error, saved_track, saved_sector;
   uint8_t  name[] = MD_CONFIG_FILE;
   buffer_t *save;
+  md_head_t h;
 
   md_active = 0;
   md_cur    = 0;
+  md_slots  = 0;
+  md_merge_own = 0;
+  md_slot_imgroot = 0;
   memset(md_dev, 0, sizeof(md_dev));
-  for (i = 0; i < MD_MAX_DEVICES; i++)
-    md_dev[i].slot[0] = md_dev[i].slot[1] = MD_NO_SLOT;
+  memset(md_slot_dev, MD_NO_DEVICE, sizeof(md_slot_dev));
+
+  /* fatops_init mounted the FAT volumes as partitions 1..max_part */
+  md_volumes = max_part;
 
   if (max_part == 0 || partition[0].fop != &fatops)
     return;
 
-  partition[0].fatfs->curr_dir = 0;
-  res = f_open(partition[0].fatfs, &fh, name, FA_READ | FA_OPEN_EXISTING);
+  part_fatfs(0)->curr_dir = 0;
+  res = f_open(part_fatfs(0), &fh, name, FA_READ | FA_OPEN_EXISTING);
   if (res != FR_OK) {
     /* md_edit_save was interrupted between deleting the old file */
     /* and renaming the new one, which was complete at that point    */
     uint8_t tmpname[] = MD_TEMP_FILE;
-    res = f_open(partition[0].fatfs, &fh, tmpname, FA_READ | FA_OPEN_EXISTING);
+    res = f_open(part_fatfs(0), &fh, tmpname, FA_READ | FA_OPEN_EXISTING);
     if (res != FR_OK)
       return;
   }
@@ -659,31 +745,53 @@ static void md_load(uint8_t prev_address) {
 
   /* allow the legacy partition syntax in do_chdir to reach every slot */
   max_part = MD_MAX_SLOTS;
-  slots    = 0;
-  pos      = 0;
 
-  while (slots < MD_MAX_SLOTS && read_line(&fh, &pos))
-    slots += apply_line(command_buffer, slots);
+  /* first pass: devices and their semantics, second pass: the drives */
+  for (pass = 0; pass < 2; pass++) {
+    pos = 0;
+    while (md_slots < MD_MAX_SLOTS && read_line(&fh, &pos)) {
+      if (pass) {
+        md_slots += apply_line(command_buffer, md_slots);
+      } else if (parse_head(command_buffer, ustrlen(command_buffer), &h)) {
+        d = get_device(h.address);
+        if (d != MD_NO_DEVICE && h.drive == 0)
+          md_dev[d].dual = 1;
+      }
+    }
 
-  f_close(&fh);
-
-  /* a device needs a working drive 0 */
-  for (i = 0; i < MD_MAX_DEVICES; i++) {
-    if (md_dev[i].address && md_dev[i].slot[0] == MD_NO_SLOT) {
-      md_dev[i].address = 0;
-      md_dev[i].slot[1] = MD_NO_SLOT;
+    /* the own address as number and as 0: one device */
+    if (pass == 0) {
+      i = find_device(0);
+      d = find_device(device_address);
+      if (i != MD_NO_DEVICE && d != MD_NO_DEVICE) {
+        md_dev[i].dual   |= md_dev[d].dual;
+        md_dev[d].address = 0;
+        md_merge_own      = 1;
+      }
     }
   }
 
-  /* move the used entries to the front */
-  {
-    uint8_t j = 0;
-    for (i = 0; i < MD_MAX_DEVICES; i++)
-      if (md_dev[i].address)
-        md_dev[j++] = md_dev[i];
-    for (; j < MD_MAX_DEVICES; j++) {
-      md_dev[j].address = 0;
-      md_dev[j].slot[0] = md_dev[j].slot[1] = MD_NO_SLOT;
+  f_close(&fh);
+
+  /* a device needs a drive, a dual drive device its drive 0 */
+  for (i = 0; i < MD_MAX_DEVICES; i++) {
+    if (!md_dev[i].address)
+      continue;
+
+    md_dev[i].cur_part = MD_NO_SLOT;
+    for (d = 0; d <= MD_MAX_DRIVE && md_dev[i].cur_part == MD_NO_SLOT; d++) {
+      if (d == 0 && !md_dev[i].dual)
+        continue;
+      md_dev[i].cur_part = find_slot(i, d);
+      if (d == 0)
+        break;                  // CBM DOS 2: drive 0 or nothing
+    }
+
+    if (md_dev[i].cur_part == MD_NO_SLOT) {
+      md_dev[i].address = 0;
+      for (d = 0; d < md_slots; d++)
+        if (md_slot_dev[d] == i)
+          md_slot_dev[d] = MD_NO_DEVICE;
     }
   }
 
@@ -695,8 +803,13 @@ static void md_load(uint8_t prev_address) {
   }
   set_error_ts(saved_error, saved_track, saved_sector);
 
-  if (md_dev[0].address == 0) {
+  for (i = 0; i < MD_MAX_DEVICES; i++)
+    if (md_dev[i].address)
+      break;
+
+  if (i == MD_MAX_DEVICES) {
     /* nothing usable configured, fall back to legacy mode */
+    md_slots = 0;
     fatops_init(0);
     return;
   }
@@ -708,14 +821,16 @@ static void md_load(uint8_t prev_address) {
     md_dev[i].err_sector = 0;
   }
 
-  max_part  = slots;
+  max_part  = md_slots;
   md_active = 1;
 
   /* device_address stays untouched: it is the legacy address */
   /* from the EEPROM, used again when the file is removed.     */
   i = md_find(prev_address);
-  md_cur       = (i == MD_NO_DEVICE) ? 0 : i;
-  current_part = md_dev[md_cur].slot[0];
+  if (i == MD_NO_DEVICE)
+    for (i = 0; !md_dev[i].address; i++) ;
+  md_cur       = i;
+  current_part = md_dev[md_cur].cur_part;
 }
 
 /**

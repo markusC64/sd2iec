@@ -89,7 +89,9 @@ typedef struct buffer_s {
   uint8_t position;
   uint8_t secondary;
   uint8_t recordlen;
+#ifdef CONFIG_MULTIDRIVE
   uint8_t device;    /* multi-drive: index of the allocating device */
+#endif
   uint32_t fptr;  // FIXME: Missing from doc comment
   int     allocated:1;
   int     mustflush:1;
