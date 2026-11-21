@@ -602,7 +602,7 @@ void iec_mainloop(void) {
           break;
         }
 //         handle_buttons();
-#ifdef HAVE_HOTPLUG
+#if defined(HAVE_HOTPLUG) && defined(CONFIG_MULTIDRIVE)
         /* Handle a card change right away to update the display.  */
         /* The ATN interrupt answers the bus meanwhile. Errors are  */
         /* still retried when the next command arrives.             */
