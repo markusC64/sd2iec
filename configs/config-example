@@ -200,7 +200,9 @@ CONFIG_BUFFER_COUNT=6
 CONFIG_STACK_TRACKING=n
 
 # Maximum number of partitions
-CONFIG_MAX_PARTITIONS=4
+CONFIG_MAX_PARTITIONS=9
+CONFIG_MAX_VOLUMES=2
+CONFIG_MULTIDRIVE=y
 
 # Real Time Clock option
 #   disable all to disable T-R/T-W commands
