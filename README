@@ -425,6 +425,8 @@ Supported commands:
 - U0
   Device address changing with "U0>"+chr$(new address) is supported,
   other U0 commands are currently not implemented.
+  With multiple drives it changes the address of the addressed device,
+  see "Multiple drives" below.
 
 - U1/U2/B-R/B-W
   Block reading and writing is fully supported while a D64 image is mounted.
@@ -625,6 +627,30 @@ Supported commands:
              See "M-R, M-W, M-E" below. This setting can be
              permanently saved in the EEPROM using XW.
 
+  - XV       Multiple drives, only with multi-drive support (see
+             "Multiple drives" below). Address 0 stands for the own
+             address of sd2iec.
+
+    XV+a:d=path Set up drive d of device a with path, written like a
+             line of DRIVES.CFG, but typed on the computer. A new address
+             creates the device. 30,SYNTAX ERROR for a wrong line, a
+             drive that exists or does not fit the device (drive 0 makes
+             a CBM DOS 2 device, which has drive 1 at most), 70,NO CHANNEL
+             if no drive or device is free, otherwise the error of the
+             path (e.g. 62,FILE NOT FOUND) if it does not exist.
+    XV-a:d   Delete drive d of device a.
+    XV-a     Delete device a.
+    XV-      Delete all devices, sd2iec is a single drive again.
+    XVL      Read DRIVES.CFG now, also with XVA-. All files are closed
+             first, the drives set up by command are gone. Results in
+             62,FILE NOT FOUND without DRIVES.CFG and in 30,SYNTAX ERROR
+             if it has no usable drive, sd2iec is a single drive then.
+    XVA+/XVA- Enable/disable reading DRIVES.CFG at power-on and after a
+             card change. This flag can be saved in the EEPROM using XW,
+             the default value is enabled (+). The extended status shows
+             it as VA+ or VA-. An EEPROM saved by old firmware may have
+             it disabled, so check it once.
+
   - XW       Store configuration to EEPROM
              This commands stores the current configuration in the EEPROM.
              It will automatically be read when the AVR is reset, so
@@ -646,6 +672,10 @@ Supported commands:
              configured for a device number that is already taken by
              another device on the bus without having to remove that
              device to reconfigure sd2iec (e.g. when using a C128D).
+
+             With multiple drives, XW also writes an address change of
+             the addressed device into DRIVES.CFG, see "Multiple drives"
+             below.
 
   - X?       Extended version query
              This commands returns the extended version string which
@@ -741,7 +771,8 @@ small file browser or fast loader so it can be used independent of the
 storage medium that is currently inserted.
 
 The EEPROM file system will always register itself on the last
-partition number (see "Partitions" below). You can check the list of
+partition number (see "Partitions" below). With multiple drives it is
+no drive and only reached with "!" (see "Multiple drives" below). You can check the list of
 partitions ("$=P") to find the current partition number of the EEPROM
 file system or use the alias function (see below) to access it.
 
@@ -786,6 +817,195 @@ using the assigned partition number is of course still
 available. Additionally "$!" will always load the directory of the
 EEPROM file system partition (if available), similar to "$1" to "$9"
 for partitions 1 to 9.
+
+Multiple drives:
+================
+With multi-drive support, sd2iec answers on up to 4 bus addresses at
+the same time. Each address is a device of its own with its own drives,
+current partition and error channel. Each drive is a directory or a
+disk image on the card.
+
+Multi-drive support is a build option: add CONFIG_MULTIDRIVE=y to the
+configuration file of your device. None of the configs/config-* files
+enables it, as it needs additional flash and RAM. A sensible setting is
+CONFIG_MAX_PARTITIONS=9 and CONFIG_MAX_VOLUMES=2, which gives 8 drives
+on the first two FAT partitions of the card.
+
+The drives of all devices together come from a pool of partitions:
+CONFIG_MAX_PARTITIONS, minus one for the EEPROM file system (if
+available), but at most 9 drives. CONFIG_MAX_VOLUMES sets how many FAT
+partitions of the card can be used for them (default: as many as
+CONFIG_MAX_PARTITIONS). Each of them costs a FAT volume structure with
+a sector buffer in RAM, so keep it small.
+
+Without a configuration nothing changes: the device is a single drive
+at the address stored in the EEPROM, as usual.
+
+Drive semantics
+---------------
+Each device decides how its drive numbers work:
+
+- A device with drive 0 behaves like a CBM DOS 2 drive: a single drive
+  with drive 0, or a dual drive with drive 0 and drive 1, like a CBM
+  4040, 8050 or 8250. It has no other drives.
+- A device without drive 0 behaves like a CMD drive: drives 1 to 9 are
+  its partitions, drive 0 (or no drive number) is the current partition,
+  which CP selects. Most C64 software expects this.
+
+Drive numbers of a CBM DOS 2 device:
+
+  $                      directory of drive 0, then of drive 1
+  $1                     directory of drive 1
+  NAME (read)            drive 0 is searched first, then drive 1
+  NAME (write)           drive 0
+  0:NAME, 1:NAME         drive 0 or drive 1
+  1:NAME (single drive)  74,DRIVE NOT READY
+
+So the BASIC 4 commands work as expected, e.g. DIRECTORY D1,U9,
+DLOAD"NAME",D1,U9 or COPY D0,"OLD" TO D1,"NEW",U9. The C command copies
+between drive 0 and drive 1 of the same device. Copying between two
+different bus addresses needs the computer in between.
+
+Drive numbers of a CMD device work like partitions (see "Partitions"
+above), but only the drives of the addressed device exist: "$=P" lists
+them, "CP2" selects drive 2, "$2" or "2:NAME" access it. A drive number
+that does not exist gives 74,DRIVE NOT READY, like for a CBM DOS 2
+device. The current partition is kept per device.
+
+CD, MD and RD take the drive number right after the command, e.g.
+CD1:GAMES, CD1/GAMES/ACTION/, CD1// or CD1:<left arrow>. Each drive keeps
+its own current directory until the next card change or reset.
+
+Each drive is confined to the directory or disk image it was set up
+with, like a chroot: "//" (in CD and in file names, e.g. LOAD"//NAME")
+goes to that directory and left arrow stops there. A drive that is a
+disk image cannot leave the image.
+
+The EEPROM file system is not a drive. It is only reached with "!",
+e.g. "$!" or "!:NAME" (see "Partitions").
+
+DRIVES.CFG
+----------
+The drives can be set up in the text file DRIVES.CFG in the root
+directory of the first partition of the card, one line per drive:
+
+  # Device 0 is the own address of sd2iec (EEPROM, U0>, XW)
+  0:1  = //
+  0:2  = //GAMES/
+  0:3  = 2//BACKUP/
+  9:0  = //CBM8050/DISK1.D80
+  9:1  = //CBM8050/DISK2.D80
+  10:0 = //WORK/TOOLS.D64
+
+Here the own address (e.g. 8) is a CMD device with three partitions,
+the last one on the second FAT partition of the card, device 9 is a
+dual drive with two D80 images and device 10 a single drive with a D64
+image.
+
+Rules:
+
+- address:drive = path, blanks around ':' and '=' are allowed.
+- The address is 4 to 30, or 0 for the own address of sd2iec: the one
+  stored in the EEPROM, changed with U0> and saved with XW. So a single
+  device with several drives keeps its address. If the own address is
+  also written as number, those lines belong to the same device.
+- The drive is 0 to 9, see "Drive semantics" above. At most 4 devices.
+- The path is written like the argument of the CD command and always
+  starts at the root directory of the partition: "//GAMES/", "/GAMES/"
+  and "GAMES/" are the same, an empty path is the root directory. A
+  partition number in front of it selects the FAT partition of the card,
+  e.g. "2//BACKUP/", the default is the first one. If the path ends with
+  a disk image, the drive is that image.
+- Names are written as the computer shows them: the line is converted
+  from ASCII to PETSCII and resolved like a CD command typed on the
+  computer, in the current extension mode (see XE). So a long file name
+  is given as such, never as an 8.3 short name.
+- Every line that does not match this pattern is a comment, usually
+  starting with '#'. A comment after a path is not possible, it would
+  become part of the path. Lines longer than the command buffer
+  (CONFIG_COMMAND_BUFFER_SIZE) are ignored.
+- If a drive is listed twice, the first line counts. Lines of a CBM DOS
+  2 device for drives above 1 are ignored.
+- Do not give the same disk image to two drives, writing to it from
+  both drives corrupts it.
+
+The file is read at power-on and after every card change, unless this
+is switched off with XVA- (see below). A drive whose path does not exist
+is missing. A device without drives, or a CBM DOS 2 device whose drive 0
+is missing, does not exist. If no device is usable, sd2iec stays a
+single drive.
+
+Drives by command
+-----------------
+The XV commands (see "X: Extended commands" above) set up drives without
+DRIVES.CFG, e.g. from a BASIC program:
+
+  10 OPEN 1,8,15
+  20 PRINT#1,"XV+9:0=//CBM8050/DISK1.D80"
+  30 PRINT#1,"XV+9:1=//CBM8050/DISK2.D80"
+  40 PRINT#1,"XV+10:1=//GAMES/"
+  50 INPUT#1,E,E$,T,S:PRINT E;E$
+  60 CLOSE 1
+
+The drives set up by command are not stored anywhere. To have them
+again, run such a program again; there is no need to save them. A card
+change discards them, then DRIVES.CFG is read unless XVA- is set.
+
+The first XV+ turns the single drive into a device: it keeps its
+address, gets each FAT partition of the card as a drive with CMD
+semantics (as far as the pool allows) and keeps its current
+directories, mounted images and open files. This device has fixed
+drives, it can only be deleted as a whole, and the first XV+ must not
+use its address (30,SYNTAX ERROR). To set up drives for the own address
+anyway, set them up for a temporary address (e.g. 30), delete the
+original device from there (XV-8 sent to device 30) and change the
+address with U0>.
+
+Deleting a drive closes all files of its device and writes back its disk
+image, like switching off a real drive. A device may delete itself, then
+it is gone like a drive that was switched off. When no device is left,
+sd2iec is a single drive again, like after a card change, with 00,OK in
+the error channel. XV- deletes all devices at once.
+
+Changing addresses
+------------------
+U0> and M-W 119 change the address of the addressed device until the
+next card change or reset. An address that is already taken or outside
+4..30 gives 30,SYNTAX ERROR. For the device with the own address this
+changes the address of sd2iec, which XW stores in the EEPROM as usual.
+
+XW also writes the new address of the addressed device into DRIVES.CFG,
+if the device comes from a line with a numeric address: only the address
+field of the lines of that device changes, everything else stays as it
+is. The file is written to DRIVES.TMP first and then renamed. If another
+device in the file has the new address, nothing is written (30,SYNTAX
+ERROR). With XVA- XW never touches DRIVES.CFG, and devices set up by XV+
+are never written into it.
+
+
+Card change
+-----------
+After a card change the drives set up by command are gone and the
+configuration of the new card is read (unless XVA- is set). A command
+that is still pending for an address which does not exist on the new
+card is discarded. The card change is also handled while the bus is
+idle, so the addresses of the new card answer right away.
+
+Failsafe start
+--------------
+Holding the NEXT button at power-on skips the configuration stored in
+the EEPROM. sd2iec then behaves as if XVA- was saved, so a DRIVES.CFG on
+the card is not read.
+
+Limitations
+-----------
+- Fast loaders are untested with more than one device.
+- The disk swap list (XS, AUTOSWAP.LST, swap buttons) is not adapted to
+  multiple drives and closes the open files of all devices.
+- If the card has more FAT partitions than the pool has drives, the
+  single drive turned into a device by the first XV+ only gets the first
+  ones.
+
 
 Software fastloaders:
 =====================
