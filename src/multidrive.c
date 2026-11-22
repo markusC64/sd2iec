@@ -303,16 +303,23 @@ static void strip_trailing(uint8_t *str) {
 
 /**
  * mount_slot - set up a partition slot for a path
- * @path : path, 0-terminated, at least three bytes after the start of
- *         the buffer it is in, which is modified in place
+ * @path : path, 0-terminated, at least two bytes after the start of the
+ *         buffer it is in, which is modified in place
  * @slot : partition slot
- * @ascii: the path is ASCII (DRIVES.CFG), not PETSCII (XV+)
+ * @start: partition whose current directory relative paths start in,
+ *         MD_NO_SLOT for DRIVES.CFG: the root, and the path is ASCII
+ *
+ * The path uses the CMD syntax of the CD command: "//" starts at the
+ * root, everything else ("/DIR/", "NAME", ":NAME", nothing) is relative.
+ * A partition number in front selects a FAT partition of the card,
+ * relative paths start at its root then. Without one XV+ uses the
+ * partition of @start, DRIVES.CFG the first one.
  *
  * Returns 1 if successful, otherwise 0 with the error channel set.
  * md_active must be 0, so the legacy partition syntax of do_chdir
  * reaches every slot.
  */
-static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t ascii) {
+static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
   uint8_t *p, vol = 0;
 
   strip_trailing(path);
@@ -322,49 +329,60 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t ascii) {
     vol = vol * 10 + (*p - '0');
   if (p != path && (*p == 0 || *p == ':' || *p == '/')) {
     path = p;
-    if (vol)
-      vol--;                    // 0 is the current one: the first here
+    if (vol) {
+      /* a partition of the card: no current directory there */
+      vol--;
+      start = MD_NO_SLOT;
+      if (vol >= md_volumes) {
+        set_error(ERROR_PARTITION_ILLEGAL);
+        return 0;
+      }
+    }
   } else {
-    vol = 0;
-  }
-  if (vol >= md_volumes) {
-    set_error(ERROR_PARTITION_ILLEGAL);
-    return 0;
+    vol = 0;                    // digits of a name, not a partition
   }
 
-  /* Build a legacy CD string for the slot: "<slot+1>" and the path, */
-  /* which starts at the root. At least three characters precede    */
-  /* the path ("8:0=" in the file, "XV+" in the command).           */
-  if (path[0] == '/' && path[1] == '/') {
-    path -= 1;                  // "//DIR/"
-  } else if (path[0] == '/') {
-    path -= 2;                  // "/DIR/" from the root
-    path[1] = '/';
-  } else if (path[0] == ':') {
-    path -= 1;                  // ":NAME"
-  } else {
-    path -= 3;                  // "NAME", "DIR/NAME" or the root
-    path[1] = '/';
-    path[2] = '/';
-  }
-  path[0] = '1' + slot;
-  if (ascii)
-    asc2pet(path + 1);
-
-  /* reset the slot to the root directory of the partition */
-  partition[slot].fatfs           = &fatvol[vol];
+  /* start in the root or in the current directory of @start */
   partition[slot].fop             = &fatops;
+  partition[slot].fatfs           = &fatvol[vol];
   partition[slot].current_dir.fat = 0;
   md_slot_imgroot &= (uint16_t)~(1U << slot);
-
-  set_error(ERROR_OK);
-  do_chdir(path);
-  if (current_error != ERROR_OK) {
-    if (partition[slot].fop != &fatops)
-      image_unmount(slot);
-    partition[slot].fop = &fatops;
-    return 0;
+  if (start != MD_NO_SLOT) {
+    partition[slot].fatfs = partition[start].fatfs;
+    if (!(path[0] == '/' && path[1] == '/')) {
+      if (partition[start].fop != &fatops) {
+        /* a relative path inside an image */
+        set_error(ERROR_SYNTAX_UNKNOWN);
+        return 0;
+      }
+      partition[slot].current_dir = partition[start].current_dir;
+    }
   }
+
+  /* Build a legacy CD string for the slot: "<slot+1>" and the path.  */
+  /* At least two characters precede the path ("8:0=" in the file,    */
+  /* "XV+" in the command). Nothing means the start directory itself. */
+  if (*path) {
+    if (path[0] == '/' || path[0] == ':') {
+      path -= 1;                // "//DIR/", "/DIR/NAME", ":NAME"
+    } else {
+      path -= 2;                // "DIR/NAME" or "NAME"
+      path[1] = ustrchr(path + 2, '/') ? '/' : ':';
+    }
+    path[0] = '1' + slot;
+    if (start == MD_NO_SLOT)
+      asc2pet(path + 1);
+
+    set_error(ERROR_OK);
+    do_chdir(path);
+    if (current_error != ERROR_OK) {
+      if (partition[slot].fop != &fatops)
+        image_unmount(slot);
+      partition[slot].fop = &fatops;
+      return 0;
+    }
+  }
+  set_error(ERROR_OK);
 
   /* The slot is confined to this directory or image. For an image */
   /* the FAT directory it is in becomes the root, in case the image */
@@ -396,7 +414,7 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
       find_slot(dev, h.drive) != MD_NO_SLOT)
     return 0;
 
-  if (!mount_slot(line + h.path_start, slot, 1))
+  if (!mount_slot(line + h.path_start, slot, MD_NO_SLOT))
     return 0;
 
   md_slot_dev[slot] = dev;
@@ -1069,7 +1087,7 @@ static void xv_add(uint8_t *line) {
     goto nochannel;
 
   md_active = 0;
-  ok = mount_slot(line + h.path_start, slot, 0);
+  ok = mount_slot(line + h.path_start, slot, current_part);
   md_active = 1;
   if (!ok)
     goto undo;
