@@ -90,7 +90,8 @@ uint8_t     md_slot_drv[MD_MAX_SLOTS];
 uint32_t    md_slot_root[MD_MAX_SLOTS];
 uint16_t    md_slot_imgroot;
 #ifdef CONFIG_MD_CONTAINERS
-uint8_t     md_slot_owner[MD_MAX_SLOTS] = { [0 ... MD_MAX_SLOTS - 1] = MD_NO_SLOT };
+uint8_t     md_slot_owner[CONFIG_MAX_PARTITIONS] =
+              { [0 ... CONFIG_MAX_PARTITIONS - 1] = MD_NO_SLOT };
 uint16_t    md_slot_base[MD_MAX_SLOTS];
 uint16_t    md_slot_size[MD_MAX_SLOTS];
 #endif
@@ -263,29 +264,30 @@ typedef struct {
   uint8_t  address;
   uint8_t  drive;
   uint8_t  addr_len;     /* number of address digits */
-  uint16_t addr_start;   /* offset of the address    */
-  uint16_t path_start;   /* offset of the path       */
+  uint8_t  addr_start;   /* offset of the address    */
+  uint8_t  path_start;   /* offset of the path       */
 } md_head_t;
 
 /**
  * parse_head - parse the start of a configuration file line
- * @line: line, need not be 0-terminated
- * @len : length of the line
+ * @line: line, 0-terminated, at most 255 characters; a line end in it
+ *        ends the line as well
  * @h   : receives the parsed values
  *
  * Returns 1 for a drive line with an address of 4..30 or 0 (the own
  * address) and a drive number of 0..9 (or "*", MD_CONTAINER), 0 for
- * comments, blank lines and everything else.
+ * comments, blank lines and everything else. The end of the line
+ * (0, CR or LF) fails every check of the head, so no length is needed.
  */
-static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
-  uint16_t i = 0;
+static uint8_t parse_head(uint8_t *line, md_head_t *h) {
+  uint8_t i = 0;
 
-#define BLANKS() while (i < len && (line[i] == ' ' || line[i] == '\t')) i++
+#define BLANKS() while (line[i] == ' ' || line[i] == '\t') i++
 
   BLANKS();
   h->addr_start = i;
   h->address    = 0;
-  while (i < len && isdigit(line[i]) && i - h->addr_start < 3)
+  while (isdigit(line[i]) && i - h->addr_start < 3)
     h->address = h->address * 10 + (line[i++] - '0');
   h->addr_len = i - h->addr_start;
   if (h->addr_len == 0 ||
@@ -293,23 +295,23 @@ static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
     return 0;
 
   BLANKS();
-  if (i >= len || line[i++] != ':')
+  if (line[i++] != ':')
     return 0;
   BLANKS();
 #ifdef CONFIG_MD_CONTAINERS
-  if (i < len && line[i] == '*') {
+  if (line[i] == '*') {
     h->drive = MD_CONTAINER;
     i++;
   } else
 #endif
   {
-    if (i >= len || !isdigit(line[i]))
+    if (!isdigit(line[i]))
       return 0;
     h->drive = line[i++] - '0';
   }
 
   BLANKS();
-  if (i >= len || line[i++] != '=')
+  if (line[i++] != '=')
     return 0;
   BLANKS();
   h->path_start = i;
@@ -509,16 +511,15 @@ static uint8_t scan_table(uint8_t owner, uint8_t dev, uint16_t table,
                           uint8_t unit, uint8_t *data) {
   FIL      *fil   = &partition[owner].imagehandle;
   uint32_t blocks = fil->fsize >> 8;
-  uint32_t start, size;
-  uint16_t need;
+  uint16_t start, size, need;   // in 256 byte blocks
   uint8_t  count = 0, k, i, num, slot = owner;
   uint8_t  *e;
   UINT     n;
   path_t   path;
   uint8_t  dnp[] = ".DNP";      // tells d64_mount a 3 track DNP from a D41
 
-  for (k = 0; k < CT_MAX_BLOCKS && table + k < blocks; k++) {
-    if (f_lseek(fil, (uint32_t)(table + k) << 8) != FR_OK ||
+  for (k = 0; k < CT_MAX_BLOCKS && (uint32_t)table + k < blocks; k++) {
+    if (f_lseek(fil, ((uint32_t)table + k) << 8) != FR_OK ||
         f_read(fil, data, 256, &n) != FR_OK || n != 256)
       goto invalid;
 
@@ -534,9 +535,18 @@ static uint8_t scan_table(uint8_t owner, uint8_t dev, uint16_t table,
       if (num > MD_MAX_PART)
         goto invalid;
 
-      start = (((uint32_t)e[CE_START] << 16) |
-               ((uint16_t)e[CE_START+1] << 8) | e[CE_START+2]) * unit;
-      size  = (((uint16_t)e[CE_SIZE] << 8) | e[CE_SIZE+1]) * (uint32_t)unit;
+      /* A start beyond 16 MB cannot be in the file. A size beyond is */
+      /* limited to 16 MB, no format uses more.                       */
+      if (e[CE_START])
+        goto invalid;
+      start = ((uint16_t)e[CE_START+1] << 8) | e[CE_START+2];
+      size  = ((uint16_t)e[CE_SIZE] << 8) | e[CE_SIZE+1];
+      if (unit == 2) {
+        if (start & 0x8000)
+          goto invalid;
+        start <<= 1;
+        size = (size & 0x8000) ? 0xffff : size << 1;
+      }
 
       /* the part of the partition its format uses */
       switch (e[CE_TYPE]) {
@@ -544,12 +554,12 @@ static uint8_t scan_table(uint8_t owner, uint8_t dev, uint16_t table,
       case 3:  need = 1366; break;
       case 4:  need = 3200; break;
       default:                  // native: whole tracks of 64 KB
-        need = size > 255 * 256UL ? 255 * 256U : size & ~0xffUL;
+        need = size > 255 * 256U ? 255 * 256U : size & ~0xffU;
         if (need == 0)
           goto invalid;
         break;
       }
-      if (need > size || start > 0xffff || start + need > blocks)
+      if (need > size || (uint32_t)start + need > blocks)
         goto invalid;
 
       if (dev == MD_NO_DEVICE) {
@@ -557,10 +567,10 @@ static uint8_t scan_table(uint8_t owner, uint8_t dev, uint16_t table,
         continue;
       }
 
-      /* mount it on the next free slot, the first one on the owner */
+      /* mount it on the next free slot, the first one on the owner; */
+      /* a slot in a container always has its device                  */
       if (count)
-        for (slot = 0; md_slot_dev[slot] != MD_NO_DEVICE ||
-                       md_slot_owner[slot] != MD_NO_SLOT; slot++) ;
+        for (slot = 0; md_slot_dev[slot] != MD_NO_DEVICE; slot++) ;
       partition[slot].fop             = &fatops;
       partition[slot].fatfs           = partition[owner].fatfs;
       partition[slot].current_dir.fat = md_slot_root[owner];
@@ -683,7 +693,7 @@ static uint8_t mount_container(uint8_t *path, uint8_t dev, uint8_t owner,
   if (count == 0)
     goto close;
   for (i = 0, nfree = 0; i < MD_MAX_SLOTS; i++)
-    if (md_slot_dev[i] == MD_NO_DEVICE && md_slot_owner[i] == MD_NO_SLOT)
+    if (md_slot_dev[i] == MD_NO_DEVICE)
       nfree++;
   if (count > nfree) {
     count = 0;
@@ -761,7 +771,7 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
   uint8_t dev;
   md_head_t h;
 
-  if (!parse_head(line, ustrlen(line), &h))
+  if (!parse_head(line, &h))
     return 0;
 
   /* devices were created in the first pass, drive 0 made them dual */
@@ -841,6 +851,7 @@ static uint8_t read_line(FIL *fh, uint32_t *pos) {
  * Duplicate lines are skipped like md_load does. Returns the number of
  * entries filled. Uses the command buffer.
  */
+#ifdef MD_EDIT_MENU
 uint8_t md_edit_load(md_edit_t *tab, uint8_t max, uint8_t *exists) {
   FIL       fh;
   uint32_t  pos = 0;
@@ -856,7 +867,7 @@ uint8_t md_edit_load(md_edit_t *tab, uint8_t max, uint8_t *exists) {
   *exists = 1;
 
   while (count < max && read_line(&fh, &pos)) {
-    if (!parse_head(command_buffer, ustrlen(command_buffer), &h))
+    if (!parse_head(command_buffer, &h))
       continue;
     for (i = 0; i < count; i++)
       if (tab[i].file_address == h.address && tab[i].file_drive == h.drive)
@@ -879,6 +890,7 @@ uint8_t md_edit_load(md_edit_t *tab, uint8_t max, uint8_t *exists) {
   f_close(&fh);
   return count;
 }
+#endif
 
 /* write to a file, a short write means the card is full */
 static FRESULT put(FIL *out, const void *data, UINT len) {
@@ -890,12 +902,15 @@ static FRESULT put(FIL *out, const void *data, UINT len) {
   return res;
 }
 
+#ifdef MD_EDIT_MENU
 /* write a line end, CR LF or LF */
 static FRESULT put_eol(FIL *out, uint8_t crlf) {
   static const uint8_t eol[] = "\r\n";
 
   return put(out, eol + !crlf, 1 + crlf);
 }
+
+#endif
 
 /* write the address as decimal number */
 static FRESULT put_address(FIL *out, uint8_t address) {
@@ -907,6 +922,7 @@ static FRESULT put_address(FIL *out, uint8_t address) {
   return put(out, digits, n);
 }
 
+#ifdef MD_EDIT_MENU
 /* write a complete drive line "<address>:<drive> = <path>" */
 static FRESULT put_line(FIL *out, md_edit_t *e, uint8_t crlf) {
   uint8_t mid[5] = { ':', '0', ' ', '=', ' ' };
@@ -934,6 +950,7 @@ static const PROGMEM uint8_t cfg_header[] =
   "# Drive 0: single/dual drive (0 and 1), otherwise partitions 1..9\r\n"
   "# Device 0: the own address of the device (EEPROM)\r\n"
   "\r\n";
+#endif
 
 /**
  * md_edit_save - write DRIVES.CFG with changes, line by line
@@ -947,8 +964,11 @@ static const PROGMEM uint8_t cfg_header[] =
  * address. Entries without a file address are appended. Comments,
  * blank lines and all other lines stay as they are. The new contents
  * go to DRIVES.TMP first, which replaces DRIVES.CFG at the end, so a
- * card pulled in between leaves the old file intact. Returns 0 if successful, otherwise the
- * error channel is set.
+ * card pulled in between leaves the old file intact. Returns 0 if
+ * successful, otherwise the error channel is set.
+ *
+ * Without the drives menu (MD_EDIT_MENU) only the address change of XW
+ * is left: MDE_ALLDRIVES entries with a file address, no new file.
  */
 uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
   FATFS    *fs = &fatvol[0];
@@ -957,7 +977,10 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
   UINT     n;
   uint32_t pos = 0;
   uint16_t len;
-  uint8_t  midline = 0, crlf = 1, eol_seen = 0, have_in, i;
+  uint8_t  midline = 0, have_in, i;
+#ifdef MD_EDIT_MENU
+  uint8_t  crlf = 1, eol_seen = 0;
+#endif
   uint8_t  name_cfg[] = MD_CONFIG_FILE;
   uint8_t  name_tmp[] = MD_TEMP_FILE;
   uint32_t saved_dir = fs->curr_dir;
@@ -974,7 +997,12 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
   fs->curr_dir = 0;
   res = f_open(fs, &in, name_cfg, FA_READ | FA_OPEN_EXISTING);
   have_in = (res == FR_OK);
+#ifdef MD_EDIT_MENU
   if (!have_in && (res != FR_NO_FILE || !create))
+#else
+  (void)create;
+  if (!have_in)
+#endif
     goto fail;
 
   res = f_open(fs, &out, name_tmp, FA_WRITE | FA_CREATE_ALWAYS);
@@ -984,32 +1012,37 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
     goto fail;
   }
 
+#ifdef MD_EDIT_MENU
   if (!have_in) {
     memcpy_P(line, cfg_header, sizeof(cfg_header) - 1);
     res = put(&out, line, sizeof(cfg_header) - 1);
   }
+#endif
 
   while (have_in && res == FR_OK) {
     res = f_lseek(&in, pos);
     if (res == FR_OK)
-      res = f_read(&in, line, 256, &n);
+      res = f_read(&in, line, 255, &n);
     if (res != FR_OK || n == 0)
       break;
+    line[n] = 0;                // for parse_head
 
-    /* one line including its terminator, or a 256 byte piece of it */
+    /* one line including its terminator, or a 255 byte piece of it */
     for (len = 0; len < n && line[len] != '\n'; len++) ;
     if (len < n)
       len++;
     pos += len;
 
+#ifdef MD_EDIT_MENU
     /* new lines get the line end of the file */
     if (!eol_seen && line[len - 1] == '\n') {
       eol_seen = 1;
       crlf = (len >= 2 && line[len - 2] == '\r');
     }
+#endif
 
     e = NULL;
-    if (!midline && parse_head(line, len, &h)) {
+    if (!midline && parse_head(line, &h)) {
       for (i = 0; i < count; i++)
         if (tab[i].file_address == h.address &&
             ((tab[i].flags & MDE_ALLDRIVES) || tab[i].file_drive == h.drive)) {
@@ -1020,10 +1053,12 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
 
     if (e == NULL) {
       res = put(&out, line, len);
+#ifdef MD_EDIT_MENU
     } else if (e->flags & MDE_REMOVED) {
       /* drop the line */
     } else if (e->flags & (MDE_NEWPATH | MDE_NEWDRIVE)) {
       res = put_line(&out, e, crlf);
+#endif
     } else {
       /* only the address changes */
       res = put(&out, line, h.addr_start);
@@ -1036,6 +1071,7 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
     midline = (line[len - 1] != '\n');
   }
 
+#ifdef MD_EDIT_MENU
   /* append new lines */
   for (i = 0; i < count && res == FR_OK; i++) {
     e = &tab[i];
@@ -1049,6 +1085,7 @@ uint8_t md_edit_save(md_edit_t *tab, uint8_t count, uint8_t create) {
     if (res == FR_OK)
       res = put_line(&out, e, crlf);
   }
+#endif
 
   if (res == FR_OK)
     res = f_close(&out);
@@ -1205,7 +1242,7 @@ static void md_load(uint8_t prev_address) {
     while (md_slots < MD_MAX_SLOTS && read_line(&fh, &pos)) {
       if (pass) {
         md_slots += apply_line(command_buffer, md_slots);
-      } else if (parse_head(command_buffer, ustrlen(command_buffer), &h)) {
+      } else if (parse_head(command_buffer, &h)) {
         d = get_device(h.address);
         if (d != MD_NO_DEVICE && h.drive == 0)
           md_dev[d].dual = 1;
@@ -1430,7 +1467,7 @@ static void xv_add(uint8_t *line) {
   uint8_t   addr, dev, slot, i, ok, was_single = !md_active;
   uint8_t   newdev = MD_NO_DEVICE;
 
-  if (!parse_head(line, ustrlen(line), &h))
+  if (!parse_head(line, &h))
     goto syntax;
 
   addr = h.address ? h.address : device_address;

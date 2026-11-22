@@ -1649,9 +1649,10 @@ uint8_t fat_delete(path_t *path, cbmdirent_t *dent) {
  * 1 otherwise.
  */
 uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
+  FATFS *fs = part_fatfs(path->part);
   FRESULT res;
 
-  part_fatfs(path->part)->curr_dir = path->dir.fat;
+  fs->curr_dir = path->dir.fat;
 
   /* A NULL dirent (left arrow) moves one directory up */
   if (dent == NULL) {
@@ -1666,7 +1667,7 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
     ops_scratch[1] = '.';
     ops_scratch[2] = 0;
 
-    res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+    res = f_stat(fs, ops_scratch, &finfo);
     if (res != FR_OK) {
       parse_error(res,1);
       return 1;
@@ -1691,13 +1692,13 @@ uint8_t fat_chdir(path_t *path, cbmdirent_t *dent) {
       /* D64/M2I mount request */
       free_multiple_buffers(FMB_DEV_USER_CLEAN);
       /* Open image file */
-      res = f_open(part_fatfs(path->part),
+      res = f_open(fs,
                    &partition[path->part].imagehandle,
                    dent->pvt.fat.realname, FA_OPEN_EXISTING|FA_READ|FA_WRITE);
 
       /* Try to open read-only if medium or file is read-only */
       if (res == FR_DENIED || res == FR_WRITE_PROTECTED)
-        res = f_open(part_fatfs(path->part),
+        res = f_open(fs,
                      &partition[path->part].imagehandle,
                      dent->pvt.fat.realname, FA_OPEN_EXISTING|FA_READ);
 
@@ -2011,11 +2012,12 @@ static uint8_t ec_dirname(cbmdirent_t *dent, uint8_t *newname) {
 #endif
 
 void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
+  FATFS *fs = part_fatfs(path->part);
   uint8_t *ext;
   FRESULT res;
   UINT byteswritten;
 
-  part_fatfs(path->part)->curr_dir = path->dir.fat;
+  fs->curr_dir = path->dir.fat;
 
 #ifdef CONFIG_CVT
   if (dent->opstype == OPSTYPE_FAT_CVT) {
@@ -2028,7 +2030,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     /* other mode or on a PC. That comes second and may fail without making   */
     /* the rename fail.                                                       */
     if (!fsnames) {
-      res = f_open(part_fatfs(path->part), &part->imagehandle, dent->pvt.fat.realname,
+      res = f_open(fs, &part->imagehandle, dent->pvt.fat.realname,
                    FA_WRITE|FA_OPEN_EXISTING);
       if (res == FR_OK) {
         if (cvt_set_name(fat_poke, &part->imagehandle, newname))
@@ -2055,9 +2057,9 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
 
     /* It may have that name already (it differs in case only, or the name  */
     /* inside was not the name of the file), then there is nothing to do.   */
-    res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+    res = f_stat(fs, ops_scratch, &finfo);
     if (res != FR_OK || finfo.clust != dent->pvt.fat.cluster) {
-      res = f_rename(part_fatfs(path->part), dent->pvt.fat.realname, ops_scratch);
+      res = f_rename(fs, dent->pvt.fat.realname, ops_scratch);
       if (res != FR_OK && fsnames)
         parse_error(res, 0);
     }
@@ -2071,7 +2073,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     /* [PSUR]00 rename, just change the internal file name */
     p00cache_invalidate();
 
-    res = f_open(part_fatfs(path->part), &partition[path->part].imagehandle,
+    res = f_open(fs, &partition[path->part].imagehandle,
                  dent->pvt.fat.realname, FA_WRITE|FA_OPEN_EXISTING);
     if (res != FR_OK) {
       parse_error(res,0);
@@ -2104,7 +2106,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     ustrcpy(ops_scratch, newname);
     x00ext = build_name(ops_scratch, dent->typeflags & TYPE_MASK, 2);
 
-    res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+    res = f_stat(fs, ops_scratch, &finfo);
     while (x00ext != NULL && res == FR_OK) {
       /* File exists, increment extension */
       *x00ext += 1;
@@ -2115,11 +2117,11 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
           break;
       }
 
-      res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+      res = f_stat(fs, ops_scratch, &finfo);
     }
     
     if (x00ext != NULL)
-       res = f_rename(part_fatfs(path->part), dent->pvt.fat.realname, ops_scratch);
+       res = f_rename(fs, dent->pvt.fat.realname, ops_scratch);
   } else {
     switch (check_extension(dent->pvt.fat.realname, &ext)) {
     case EXT_IS_TYPE:
@@ -2139,7 +2141,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
          return;
       }
       
-      res = f_rename(part_fatfs(path->part), dent->pvt.fat.realname, ops_scratch);
+      res = f_rename(fs, dent->pvt.fat.realname, ops_scratch);
       if (res != FR_OK)
         parse_error(res, 0);
       break;
@@ -2160,7 +2162,7 @@ void fat_rename(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
          return;
       }
       
-      res = f_rename(part_fatfs(path->part), dent->pvt.fat.realname, ops_scratch);
+      res = f_rename(fs, dent->pvt.fat.realname, ops_scratch);
       if (res != FR_OK)
         parse_error(res, 0);
       break;
@@ -2245,7 +2247,7 @@ void fatops_init(uint8_t preserve_path) {
 uint8_t image_unmount(uint8_t part) {
   FRESULT res;
 #ifdef CONFIG_MD_CONTAINERS
-  uint8_t owner = md_in_container(part) ? md_slot_owner[part] : MD_NO_SLOT;
+  uint8_t owner = md_slot_owner[part];  // MD_NO_SLOT outside a container
 
   if (owner == part) {
     /* the other partitions of the container first, they use its file */
@@ -2375,10 +2377,11 @@ uint8_t image_read(uint8_t part, LONG offset, void *buffer, uint16_t bytes) {
 #ifdef CONFIG_MD_CONTAINERS
   if (md_in_container(part)) {
     /* the end of the partition is the end of the image, -1 would  */
-    /* continue where another partition of the file stopped         */
-    uint32_t size = image_size(part);
+    /* continue where another partition of the file stopped, as an */
+    /* unsigned number it is beyond every partition                */
+    uint32_t size = (uint32_t)md_slot_size[part] << 8;
 
-    if (offset < 0 || (uint32_t)offset >= size)
+    if ((uint32_t)offset >= size)
       return 1;
     if ((uint32_t)offset + bytes > size)
       bytes = size - offset;
@@ -2431,7 +2434,9 @@ uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uin
 #ifdef CONFIG_MD_CONTAINERS
   if (md_in_container(part)) {
     /* a partition cannot grow into the next one */
-    if (offset < 0 || (uint32_t)offset + bytes > image_size(part)) {
+    uint32_t size = (uint32_t)md_slot_size[part] << 8;
+
+    if ((uint32_t)offset >= size || (uint32_t)offset + bytes > size) {
       set_error(ERROR_IMAGE_INVALID);
       return 2;
     }
@@ -2656,6 +2661,7 @@ static void fat_set_headername(path_t *path, uint8_t *newname, uint8_t *newid)
 
 #ifndef CONFIG_DISABLE_EC_AND_ET
 static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
+  FATFS *fs = part_fatfs(path->part);
   uint8_t *x00ext;
   FRESULT  res;
   FILINFO  finfo;
@@ -2675,8 +2681,8 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
     if (dent->opstype == OPSTYPE_FAT_CVT && newtype != TYPE_CVT) {
       partition_t *part = &partition[path->part];
 
-      part_fatfs(path->part)->curr_dir = path->dir.fat;
-      res = f_open(part_fatfs(path->part), &part->imagehandle, dent->pvt.fat.realname,
+      fs->curr_dir = path->dir.fat;
+      res = f_open(fs, &part->imagehandle, dent->pvt.fat.realname,
                    FA_READ|FA_WRITE|FA_OPEN_EXISTING);
       if (res == FR_OK) {
         uint8_t err = cvt_set_type(fat_peek, fat_poke, &part->imagehandle, newtype);
@@ -2700,7 +2706,7 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
   }
 #endif
 
-  part_fatfs(path->part)->curr_dir = path->dir.fat;
+  fs->curr_dir = path->dir.fat;
   p00cache_invalidate();
 
   ustrcpy(ops_scratch, dent->name);
@@ -2710,7 +2716,7 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
     x00ext = build_name(ops_scratch, newtype, 2) - 1;
 
     /* Find a free sequence number */
-    res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+    res = f_stat(fs, ops_scratch, &finfo);
     while (res == FR_OK) {
       *x00ext += 1;
       if (*x00ext == '9'+1) {
@@ -2721,14 +2727,14 @@ static void fat_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
           return;
         }
       }
-      res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+      res = f_stat(fs, ops_scratch, &finfo);
     }
   }
   else
      x00ext = build_name(ops_scratch, newtype, 1);
 
   set_dirty_led(1);
-  res = f_rename(part_fatfs(path->part), dent->pvt.fat.realname, ops_scratch);
+  res = f_rename(fs, dent->pvt.fat.realname, ops_scratch);
   update_leds();
 
   if (res != FR_OK)
@@ -2768,6 +2774,7 @@ static uint8_t fat_find_tempname(path_t *path, uint8_t *name) {
 }
 
 static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
+  FATFS *fs = part_fatfs(path->part);
   uint8_t tempname[CBM_NAME_LENGTH+1];
   uint8_t needs_copy;
   uint8_t *target;
@@ -2828,9 +2835,9 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
     UINT read_count, write_count;
     uint8_t copy_buffer[128];
 
-    part_fatfs(path->part)->curr_dir = path->dir.fat;
+    fs->curr_dir = path->dir.fat;
     if (x00ext) {
-      res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+      res = f_stat(fs, ops_scratch, &finfo);
       while (res == FR_OK) {
         *x00ext += 1;
         if (*x00ext == '9'+1) {
@@ -2841,7 +2848,7 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
             return;
           }
         }
-        res = f_stat(part_fatfs(path->part), ops_scratch, &finfo);
+        res = f_stat(fs, ops_scratch, &finfo);
       }
       if (res != FR_NO_FILE) {
         parse_error(res, 0);
@@ -2859,11 +2866,11 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
 
     p00cache_invalidate();
     set_dirty_led(1);
-    res = f_open(part_fatfs(path->part), &partition[path->part].imagehandle,
+    res = f_open(fs, &partition[path->part].imagehandle,
                  dent->pvt.fat.realname, FA_READ | FA_OPEN_EXISTING);
     if (res != FR_OK) goto copy_error;
 
-    res = f_open(part_fatfs(path->part), &destination,
+    res = f_open(fs, &destination,
                  ops_scratch, FA_WRITE | FA_CREATE_NEW);
     if (res != FR_OK) {
       f_close(&partition[path->part].imagehandle);
@@ -2901,11 +2908,11 @@ static void fat_convert(path_t *path, cbmdirent_t *dent, uint8_t *newname) {
       if (res == FR_OK) res = close_res;
     }
     if (res != FR_OK) {
-      f_unlink(part_fatfs(path->part), ops_scratch);
+      f_unlink(fs, ops_scratch);
       goto copy_error;
     }
 
-    res = f_unlink(part_fatfs(path->part), dent->pvt.fat.realname);
+    res = f_unlink(fs, dent->pvt.fat.realname);
     if (res != FR_OK) goto copy_error;
     update_leds();
     set_error(ERROR_OK);

@@ -98,7 +98,7 @@ extern uint16_t    md_slot_imgroot; /* bit mask: the root of the slot is an imag
 /* A partition of a container image: the file is open in the image  */
 /* handle of the owner slot (the one of the first partition), the    */
 /* partition is a part of it. In 256 byte blocks.                    */
-extern uint8_t     md_slot_owner[MD_MAX_SLOTS]; /* MD_NO_SLOT: no container */
+extern uint8_t     md_slot_owner[CONFIG_MAX_PARTITIONS]; /* MD_NO_SLOT: none */
 extern uint16_t    md_slot_base[MD_MAX_SLOTS];  /* start of the partition  */
 extern uint16_t    md_slot_size[MD_MAX_SLOTS];  /* size of the partition   */
 #endif
@@ -157,6 +157,13 @@ typedef struct {
   uint8_t flags;         /* MDE_*                                     */
   uint8_t *path;         /* ASCII path, needed for new and MDE_NEW*   */
 } md_edit_t;
+
+/* All but the address change of XW is for the "Configure drives" menu, */
+/* which is built with the onboard display. Without it md_edit_save     */
+/* knows MDE_ALLDRIVES only and never creates the file.                 */
+#ifdef CONFIG_ONBOARD_DISPLAY
+#  define MD_EDIT_MENU
+#endif
 
 /* Read the drive lines of DRIVES.CFG into tab, whose path pointers must */
 /* point to MD_PATH_MAX bytes each. Returns the number of lines read,    */
@@ -234,8 +241,9 @@ static inline uint8_t md_root_locked(uint8_t part) {
 #ifdef CONFIG_MD_CONTAINERS
 /* Non-zero if a partition is a partition of a container image. Also */
 /* valid while md_active is 0, the owners are cleared by md_reset.   */
+/* md_slot_owner covers all partitions, so there is no range check.  */
 static inline uint8_t md_in_container(uint8_t part) {
-  return part < MD_MAX_SLOTS && md_slot_owner[part] != MD_NO_SLOT;
+  return md_slot_owner[part] != MD_NO_SLOT;
 }
 
 /* Read the name of partition num from the table of the container  */
