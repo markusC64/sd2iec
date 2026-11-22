@@ -178,6 +178,12 @@ uint8_t md_slot_drive(uint8_t part);
 /* Non-zero if the current device is a CBM DOS 2 dual drive */
 uint8_t md_is_dual(void);
 
+/* Non-zero if the current device has CBM DOS 2 semantics (drive 0), */
+/* as a single or a dual drive                                       */
+static inline uint8_t md_is_cbmdos(void) {
+  return md_active && md_dev[md_cur].dual;
+}
+
 /* Visible partition number of a partition index (header, CP, G-P, ...) */
 static inline uint8_t md_part_number(uint8_t part) {
   return md_active ? md_slot_drive(part) : part + 1;
@@ -224,6 +230,7 @@ static inline uint8_t md_part_visible(uint8_t part) {
 #  define md_drive_slot(d) MD_NO_SLOT
 #  define md_slot_drive(p) 0
 #  define md_is_dual()   0
+#  define md_is_cbmdos() 0
 #  define md_part_number(p) ((uint8_t)((p) + 1))
 #  define md_number_part(n) ((uint8_t)((n) - 1))
 #  define md_part_visible(p) 1
