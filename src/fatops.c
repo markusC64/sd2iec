@@ -2244,6 +2244,20 @@ void fatops_init(uint8_t preserve_path) {
  */
 uint8_t image_unmount(uint8_t part) {
   FRESULT res;
+#ifdef CONFIG_MD_CONTAINERS
+  uint8_t owner = md_in_container(part) ? md_slot_owner[part] : MD_NO_SLOT;
+
+  if (owner == part) {
+    /* the other partitions of the container first, they use its file */
+    for (uint8_t i = 0; i < MD_MAX_SLOTS; i++) {
+      if (i != part && md_slot_owner[i] == part) {
+        if (partition[i].fop != &fatops)
+          image_unmount(i);
+        md_slot_owner[i] = MD_NO_SLOT;
+      }
+    }
+  }
+#endif
 
   free_multiple_buffers(FMB_DEV_USER_CLEAN);
 
@@ -2263,6 +2277,13 @@ uint8_t image_unmount(uint8_t part) {
   }
 
   partition[part].fop = &fatops;
+#ifdef CONFIG_MD_CONTAINERS
+  if (owner != MD_NO_SLOT) {
+    md_slot_owner[part] = MD_NO_SLOT;
+    if (owner != part)
+      return 0;               // the file belongs to the owner slot
+  }
+#endif
   res = f_close(&partition[part].imagehandle);
   if (res != FR_OK) {
     parse_error(res,0);
@@ -2307,6 +2328,33 @@ void image_mkdir(path_t *path, uint8_t *dirname) {
   return;
 }
 
+#ifdef CONFIG_MD_CONTAINERS
+/**
+ * image_fil - the open file of a mounted image
+ * @part: partition number
+ *
+ * A partition of a container image uses the file of its owner slot.
+ */
+FIL *image_fil(uint8_t part) {
+  if (md_in_container(part))
+    part = md_slot_owner[part];
+  return &partition[part].imagehandle;
+}
+
+/**
+ * image_size - the size of a mounted image
+ * @part: partition number
+ *
+ * For a partition of a container image this is the size of the
+ * partition, as far as its format uses it.
+ */
+uint32_t image_size(uint8_t part) {
+  if (md_in_container(part))
+    return (uint32_t)md_slot_size[part] << 8;
+  return partition[part].imagehandle.fsize;
+}
+#endif
+
 /**
  * image_read - Seek to a specified image offset and read data
  * @part  : partition number
@@ -2321,22 +2369,38 @@ void image_mkdir(path_t *path, uint8_t *dirname) {
 uint8_t image_read(uint8_t part, LONG offset, void *buffer, uint16_t bytes) {
   FRESULT res;
   UINT bytesread;
+  FIL *fil = image_fil(part);
+  uint16_t wanted = bytes;
+
+#ifdef CONFIG_MD_CONTAINERS
+  if (md_in_container(part)) {
+    /* the end of the partition is the end of the image, -1 would  */
+    /* continue where another partition of the file stopped         */
+    uint32_t size = image_size(part);
+
+    if (offset < 0 || (uint32_t)offset >= size)
+      return 1;
+    if ((uint32_t)offset + bytes > size)
+      bytes = size - offset;
+    offset += (uint32_t)md_slot_base[part] << 8;
+  }
+#endif
 
   if (offset != (LONG)-1) {
-    res = f_lseek(&partition[part].imagehandle, offset);
+    res = f_lseek(fil, offset);
     if (res != FR_OK) {
       parse_error(res,1);
       return 2;
     }
   }
 
-  res = f_read(&partition[part].imagehandle, buffer, bytes, &bytesread);
+  res = f_read(fil, buffer, bytes, &bytesread);
   if (res != FR_OK) {
     parse_error(res,1);
     return 2;
   }
 
-  if (bytesread != bytes)
+  if (bytesread != wanted)
     return 1;
 
   return 0;
@@ -2357,21 +2421,33 @@ uint8_t image_read(uint8_t part, LONG offset, void *buffer, uint16_t bytes) {
 uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uint8_t flush) {
   FRESULT res;
   UINT byteswritten;
+  FIL *fil = image_fil(part);
 
   if (partition[part].imagetype & D64_IS_READLNLY) {
      set_error_ts(ERROR_WRITE_PROTECT,0,0);
      return 2;
   }
 
+#ifdef CONFIG_MD_CONTAINERS
+  if (md_in_container(part)) {
+    /* a partition cannot grow into the next one */
+    if (offset < 0 || (uint32_t)offset + bytes > image_size(part)) {
+      set_error(ERROR_IMAGE_INVALID);
+      return 2;
+    }
+    offset += (uint32_t)md_slot_base[part] << 8;
+  }
+#endif
+
   if (offset != (LONG)-1) {
-    res = f_lseek(&partition[part].imagehandle, offset);
+    res = f_lseek(fil, offset);
     if (res != FR_OK) {
       parse_error(res,1);
       return 2;
     }
   }
 
-  res = f_write(&partition[part].imagehandle, buffer, bytes, &byteswritten);
+  res = f_write(fil, buffer, bytes, &byteswritten);
   if (res != FR_OK) {
     parse_error(res,0);
     return 2;
@@ -2381,7 +2457,7 @@ uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uin
     return 1;
 
   if (flush)
-    f_sync(&partition[part].imagehandle);
+    f_sync(fil);
 
   return 0;
 }

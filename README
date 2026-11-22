@@ -645,7 +645,12 @@ Supported commands:
              directory nor a disk image, 70,NO CHANNEL if no drive or
              device is free, otherwise the error of the path (e.g.
              62,FILE NOT FOUND) if it does not exist.
-    XV-a:d   Delete drive d of device a.
+    XV+a:*=path Set up a new device a with all partitions of a container
+             image (D1M, D2M, D4M, RL), only with CONFIG_MD_CONTAINERS
+             (see "Container images" below). 30,SYNTAX ERROR if device a
+             exists, 79,IMAGE INVALID for an invalid partition table,
+             70,NO CHANNEL if not all partitions fit.
+    XV-a:d   Delete drive d of device a. Not for a container device.
     XV-a     Delete device a.
     XV-      Delete all devices, sd2iec is a single drive again.
     XVL      Read DRIVES.CFG now, also with XVA-. All files are closed
@@ -976,6 +981,38 @@ image, like switching off a real drive. A device may delete itself, then
 it is gone like a drive that was switched off. When no device is left,
 sd2iec is a single drive again, like after a card change, with 00,OK in
 the error channel. XV- deletes all devices at once.
+
+Container images
+----------------
+With CONFIG_MD_CONTAINERS=y (in addition to CONFIG_MULTIDRIVE=y; none
+of the configs/config-* files enables it) a device can be a CMD drive
+with all partitions of a container image: D1M, D2M and D4M images of a
+CMD FD-2000/FD-4000 and RL images of a CMD RAMLink. The drive is "*":
+
+  10:* = //GAMES/COLLECTION.D4M
+
+or XV+10:*=//GAMES/COLLECTION.D4M. Each partition of the types 1541,
+1571, 1581 and native in the partition table of the image becomes a
+drive, the drive number is its partition number. The first partition is
+current at the start, CP selects the others as usual. Partitions of
+other types (CP/M, print buffer, ...) are left out. $=P lists the
+partitions with their names from the table, and the system partition.
+
+- The container is mounted completely or not at all: if a partition is
+  invalid or does not fit into the pool of drives, the device is not
+  set up. Each partition takes a drive of the pool, so the pool should
+  be large enough, e.g. CONFIG_MAX_PARTITIONS=20 (at most 16 drives).
+- Such a device has nothing but the partitions of its container: a "*"
+  line for an address that already has drives (or the other way round)
+  is ignored, XV+ and XV-a:d give 30,SYNTAX ERROR. XV-a deletes it.
+- A partition behaves like a disk image of its type and size and cannot
+  grow beyond its end. N: formats it within its size. It cannot be left
+  with CD<left arrow>, and the disk swap list does not work on it.
+- The partition table itself cannot be changed: no creating, deleting
+  or renaming of partitions.
+- CD does not mount a container image, it only mounts disk images.
+- CMD HD images (DHD) and RAMLink images of the larger RLXL type are not
+  supported.
 
 Changing addresses
 ------------------

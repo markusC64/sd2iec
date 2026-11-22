@@ -1411,7 +1411,7 @@ static void parse_getpartition(void) {
 
   if (partition[part].fop == &d64ops) {
     /* return the size of the disk image, rounded up */
-    size = (partition[part].imagehandle.fsize + 511) / 512;
+    size = (image_size(part) + 511) / 512;
 
   } else {
     /* return the size of the FAT partition */
