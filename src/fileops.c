@@ -46,6 +46,9 @@
 #include "wrapops.h"
 #include "fileops.h"
 #include "multidrive.h"
+#ifdef CONFIG_LCD_DISPLAY
+#include "display_lcd.h"
+#endif
 
 /* ------------------------------------------------------------------------- */
 /*  global variables                                                         */
@@ -1043,6 +1046,9 @@ void file_open(uint8_t secondary) {
 
   /* Direct access? */
   if (command_buffer[0] == '#') {
+#ifdef CONFIG_LCD_DISPLAY
+    DS_LOAD((const char *) command_buffer);
+#endif
     open_buffer(secondary);
     return;
   }
@@ -1125,6 +1131,9 @@ void file_open(uint8_t secondary) {
 
   /* Load directory? */
   if (command_buffer[0] == '$') {
+#ifdef CONFIG_LCD_DISPLAY
+    DS_LOAD((const char *) command_buffer);
+#endif
     load_directory(secondary);
     return;
   }
@@ -1261,7 +1270,15 @@ void file_open(uint8_t secondary) {
   }
 #endif
 
+#ifdef CONFIG_LCD_DISPLAY
+  if (mode == OPEN_READ) {
+    DS_LOAD((const char *) command_buffer); 
+  }
+#endif
   if (mode == OPEN_WRITE) {
+#ifdef CONFIG_LCD_DISPLAY
+    DS_SAVE((const char * ) command_buffer);
+#endif
     if (res == 0) {
       /* Match found */
       if (command_buffer[0] == '@') {
