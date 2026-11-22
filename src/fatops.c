@@ -3089,12 +3089,12 @@ static uint8_t describe_names(path_t *path, cbmdirent_t *dent, uint8_t *typed,
  * Returns 0 on success, non-zero if the file can't be examined.
  */
 uint8_t fat_describe(path_t *path, cbmdirent_t *dent, uint8_t *typed, uint8_t *out) {
-  partition_t *part = &partition[path->part];
   uint8_t *sfn = dent->pvt.fat.realname;
   uint8_t *ext;
   uint8_t isdir = (dent->typeflags & EXT_TYPE_MASK) == TYPE_DIR;
   exttype_t et;
 #ifdef CONFIG_CVT
+  partition_t *part = &partition[path->part];
   FRESULT res;
 #endif
 
