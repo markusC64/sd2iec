@@ -36,6 +36,7 @@
 #include "gcccompat.h"
 #include "led.h"
 #include "parser.h"
+#include "multidrive.h"
 #include "progmem.h"
 #include "timer.h"
 #include "utils.h"
@@ -92,6 +93,11 @@ static bool mount_line(void) {
   bool seen_nonwhite = false;
   bool is_comment = false;
   uint8_t olderror = current_error;
+
+  /* a partition of a container image cannot be swapped */
+  if (md_in_container(swappath.part))
+    return false;
+
   current_error = ERROR_OK;
 
   /* Kill all buffers */

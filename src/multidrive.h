@@ -31,6 +31,18 @@
 #define MD_MAX_DEVICES   4
 #define MD_MAX_DRIVE     9     /* highest drive number in the file     */
 
+/* Drive "*" in a line: all partitions of a container image (D1M, D2M, */
+/* D4M, RL), drive numbers are the partition numbers of its table.     */
+#ifdef CONFIG_MD_CONTAINERS
+#  ifndef CONFIG_MULTIDRIVE
+#    error CONFIG_MD_CONTAINERS needs CONFIG_MULTIDRIVE
+#  endif
+#  define MD_CONTAINER   0xfe  /* drive number of a "*" line           */
+#  define MD_MAX_PART    31    /* highest partition number of a container */
+#else
+#  define MD_MAX_PART    MD_MAX_DRIVE
+#endif
+
 /* The drives of all devices together get the partition table, except  */
 /* for the entry of the EEPROM file system. There are at most 16, so    */
 /* md_slot_imgroot fits into 16 bits.                                   */
@@ -68,6 +80,10 @@ typedef struct {
   uint8_t err_code;           /* saved error channel state while the */
   uint8_t err_track;          /*   device is not addressed            */
   uint8_t err_sector;
+#ifdef CONFIG_MD_CONTAINERS
+  uint16_t table;             /* partition table of a container device */
+                              /*   in 256 byte blocks, 0 = none         */
+#endif
 } md_device_t;
 
 #ifdef CONFIG_MULTIDRIVE
@@ -78,6 +94,14 @@ extern uint8_t     md_slot_dev[MD_MAX_SLOTS]; /* device of each slot or NO_DEVIC
 extern uint8_t     md_slot_drv[MD_MAX_SLOTS]; /* drive number of each slot   */
 extern uint32_t    md_slot_root[MD_MAX_SLOTS]; /* root directory cluster of each slot */
 extern uint16_t    md_slot_imgroot; /* bit mask: the root of the slot is an image */
+#ifdef CONFIG_MD_CONTAINERS
+/* A partition of a container image: the file is open in the image  */
+/* handle of the owner slot (the one of the first partition), the    */
+/* partition is a part of it. In 256 byte blocks.                    */
+extern uint8_t     md_slot_owner[MD_MAX_SLOTS]; /* MD_NO_SLOT: no container */
+extern uint16_t    md_slot_base[MD_MAX_SLOTS];  /* start of the partition  */
+extern uint16_t    md_slot_size[MD_MAX_SLOTS];  /* size of the partition   */
+#endif
 extern uint8_t     md_slots;        /* number of slots in use (partition 0..) */
 extern uint8_t     md_volumes;      /* number of FAT volumes on the card     */
 extern uint8_t     md_cur;          /* index of the currently addressed device */
@@ -207,6 +231,21 @@ static inline uint8_t md_root_locked(uint8_t part) {
   return md_active && part < md_slots && (md_slot_imgroot & (1U << part));
 }
 
+#ifdef CONFIG_MD_CONTAINERS
+/* Non-zero if a partition is a partition of a container image. Also */
+/* valid while md_active is 0, the owners are cleared by md_reset.   */
+static inline uint8_t md_in_container(uint8_t part) {
+  return part < MD_MAX_SLOTS && md_slot_owner[part] != MD_NO_SLOT;
+}
+
+/* Read the name of partition num from the table of the container  */
+/* that partition part belongs to, 0-terminated without the padding. */
+/* Returns 0 if successful, otherwise the error channel is set.      */
+uint8_t md_table_name(uint8_t part, uint8_t num, uint8_t *name);
+#else
+#  define md_in_container(p) 0
+#endif
+
 /* Non-zero if a partition index is visible for the current device.  */
 /* The EEPROM file system behind the slots has no drive number, it is */
 /* reached with "!" only.                                              */
@@ -236,6 +275,7 @@ static inline uint8_t md_part_visible(uint8_t part) {
 #  define md_part_visible(p) 1
 #  define md_root_cluster(p) 0
 #  define md_root_locked(p)  0
+#  define md_in_container(p) 0
 
 #endif
 

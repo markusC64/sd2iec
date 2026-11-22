@@ -1329,7 +1329,7 @@ static uint8_t errorcache_commit(void) {
 uint8_t d64_mount(path_t *path, uint8_t *name) {
   uint8_t imagetype;
   uint8_t part = path->part;
-  uint32_t fsize = partition[part].imagehandle.fsize;
+  uint32_t fsize = image_size(part);
   uint8_t trk;
   uint8_t sec;
 
@@ -2141,7 +2141,7 @@ static void d64_open_write(path_t *path, cbmdirent_t *dent, uint8_t type, buffer
 #endif
 
   /* Check for read-only image file */
-  if (!(partition[path->part].imagehandle.flag & FA_WRITE)) {
+  if (!(image_fil(path->part)->flag & FA_WRITE)) {
     set_error(ERROR_WRITE_PROTECT);
     return;
   }
@@ -3653,7 +3653,7 @@ static void d64_change_type(path_t *path, cbmdirent_t *dent, uint8_t newtype) {
      if (newtype & CHTYPE_CONVERT) {
        buffer_t *buf;
 
-       if (!(partition[path->part].imagehandle.flag & FA_WRITE)) {
+       if (!(image_fil(path->part)->flag & FA_WRITE)) {
          set_error(ERROR_WRITE_PROTECT);
          return;
        }

@@ -299,7 +299,7 @@ static uint8_t pdir_refill(buffer_t* buf) {
 
   /* read volume name */
   /* multi-drive: the drives of the addressed device by drive number */
-  while (buf->pvt.pdir.part < (md_active ? MD_MAX_DRIVE + 1 : max_part)) {
+  while (buf->pvt.pdir.part < (md_active ? MD_MAX_PART + 1 : max_part)) {
     part = buf->pvt.pdir.part++;
 #ifdef CONFIG_MULTIDRIVE
     if (md_active) {
@@ -311,6 +311,15 @@ static uint8_t pdir_refill(buffer_t* buf) {
         continue;
     }
 
+#ifdef CONFIG_MD_CONTAINERS
+    if (md_in_container(part)) {
+      /* a partition of a container: its name in the partition table */
+      if (md_table_name(part, md_slot_drive(part), dent.name)) {
+        free_buffer(buf);
+        return 1;
+      }
+    } else
+#endif
     if (md_active && partition[part].fop == &fatops) {
       /* a directory: its name, like the header of its directory */
       path_t root;
@@ -523,6 +532,9 @@ static void load_directory(uint8_t secondary) {
     return;
 
   uint8_t *name;
+#ifdef CONFIG_MD_CONTAINERS
+  uint8_t *sysname;
+#endif
 
   buf->secondary = secondary;
   buf->read      = 1;
@@ -556,6 +568,20 @@ static void load_directory(uint8_t secondary) {
           /* a CBM DOS 2 drive has no partitions, so no system partition */
           if (md_is_cbmdos())
             buf->lastused = 31;
+        }
+#endif
+#ifdef CONFIG_MD_CONTAINERS
+        /* a container has a system partition with a name of its own */
+        sysname = buf->data + 128;
+        if (md_in_container(current_part) &&
+            !md_table_name(current_part, 0, sysname)) {
+          uint8_t *p = buf->data + 32 + 8;  // behind the quote
+
+          memset(p, ' ', 18);
+          memcpy(p, sysname, ustrlen(sysname));
+          p[ustrlen(sysname)] = '"';
+        } else {
+          ustrcpy_P(sysname, PSTR("SYSTEM"));
         }
 #endif
 
@@ -598,7 +624,11 @@ static void load_directory(uint8_t secondary) {
             return;
 
           buf->pvt.pdir.matchstr = name;
+#ifdef CONFIG_MD_CONTAINERS
+          if (!match_name_str(buf->pvt.pdir.matchstr, sysname, 0))
+#else
           if (!match_name_str(buf->pvt.pdir.matchstr, (uint8_t*) "SYSTEM", 0))
+#endif
             buf->lastused  = 31;
         }
         stick_buffer(buf);

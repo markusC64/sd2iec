@@ -87,6 +87,16 @@ void    image_mkdir(path_t *path, uint8_t *dirname);
 uint8_t image_read(uint8_t part, LONG offset, void *buffer, uint16_t bytes);
 uint8_t image_write(uint8_t part, LONG offset, void *buffer, uint16_t bytes, uint8_t flush);
 
+/* The open file of a mounted image and its size. A partition of a */
+/* container image has the file of the container and its own size. */
+#ifdef CONFIG_MD_CONTAINERS
+FIL     *image_fil(uint8_t part);
+uint32_t image_size(uint8_t part);
+#else
+#  define image_fil(part)  (&partition[part].imagehandle)
+#  define image_size(part) (partition[part].imagehandle.fsize)
+#endif
+
 typedef enum {
    IMG_UNKNOWN = 0,
    IMG_IS_M2I  = 1<<0,

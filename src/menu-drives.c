@@ -154,7 +154,8 @@ static uint8_t address_in_use(uint8_t address) {
  *
  * The number must be free. With drive 0 the device is a CBM DOS 2
  * single or dual drive, so only 0 and 1 go together; drives 2..9 are
- * CMD style partitions and exclude drive 0.
+ * CMD style partitions and exclude drive 0. A device with a container
+ * line ("*") gets no further drives.
  */
 static uint8_t drive_allowed(uint8_t address, uint8_t drive, uint8_t except) {
   for (uint8_t i = 0; i < st->count; i++) {
@@ -162,6 +163,10 @@ static uint8_t drive_allowed(uint8_t address, uint8_t drive, uint8_t except) {
 
     if (i == except || !is_live(i) || e->address != address)
       continue;
+#ifdef CONFIG_MD_CONTAINERS
+    if (e->drive == MD_CONTAINER)
+      return 0;               // a container device takes nothing else
+#endif
     if (e->drive == drive ||
         (drive == 0 && e->drive > 1) || (drive > 1 && e->drive == 0))
       return 0;
@@ -303,6 +308,17 @@ static void build_rows(void) {
   st->nrows = n;
 }
 
+/* a drive number, "*" for all partitions of a container */
+static void put_drive(uint8_t drive) {
+#ifdef CONFIG_MD_CONTAINERS
+  if (drive == MD_CONTAINER) {
+    lcd_putc('*');
+    return;
+  }
+#endif
+  lcd_printf("%d", drive);
+}
+
 static void draw_row(uint8_t r) {
   uint8_t i = st->rows[r];
   md_edit_t *e;
@@ -326,7 +342,8 @@ static void draw_row(uint8_t r) {
   } else {
     lcd_puts_P(PSTR("    "));
   }
-  lcd_printf("%d:", e->drive);
+  put_drive(e->drive);
+  lcd_putc(':');
   put_path(e->path, LCD_COLS - 6);
 }
 
@@ -643,9 +660,10 @@ static void draw_sub(uint8_t r) {
   switch (st->sub[r]) {
   case SUB_BACK:
     if (e->address)
-      lcd_printf("< #%d drive %d", e->address, e->drive);
+      lcd_printf("< #%d drive ", e->address);
     else
-      lcd_printf("< *%d drive %d", st->own_address, e->drive);
+      lcd_printf("< *%d drive ", st->own_address);
+    put_drive(e->drive);
     break;
   case SUB_CHOOSE:     lcd_puts_P(PSTR("Choose dir/image")); break;
   case SUB_ADDRESS:    lcd_puts_P(PSTR("Change address")); break;
@@ -689,7 +707,10 @@ static void drive_menu(uint8_t i) {
   st->sub[n++] = SUB_BACK;
   st->sub[n++] = SUB_CHOOSE;
   st->sub[n++] = SUB_ADDRESS;
-  st->sub[n++] = SUB_DRIVENUM;
+#ifdef CONFIG_MD_CONTAINERS
+  if (e->drive != MD_CONTAINER)
+#endif
+    st->sub[n++] = SUB_DRIVENUM;
   if (next_drive(e->address) != NONE)
     st->sub[n++] = SUB_ADD_DRIVE;
   if (count_drives(e->address) > 1)

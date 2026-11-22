@@ -47,6 +47,15 @@
    Without a configuration file nothing changes and the legacy single
    drive behaviour is kept.
 
+   With CONFIG_MD_CONTAINERS a line with drive "*" makes a device of all
+   partitions of a container image (D1M, D2M, D4M, RL) at once:
+
+     10:* = //GAMES/COLLECTION.D4M
+
+   The drive numbers are the partition numbers of its table. Such a
+   device takes no other drives, the container is mounted completely
+   or not at all.
+
    The XV commands set up drives without the file (XV+, XV-), read it
    on request (XVL) and switch reading it at power-on and card change
    on or off (XVA+/-, saved by XW). A card change always discards the
@@ -60,6 +69,8 @@
 #include "config.h"
 #include "buffers.h"
 #include "bus.h"
+#include "d64ops.h"
+#include "dirent.h"
 #include "doscmd.h"
 #include "errormsg.h"
 #include "eefs-ops.h"
@@ -78,6 +89,11 @@ uint8_t     md_slot_dev[MD_MAX_SLOTS];
 uint8_t     md_slot_drv[MD_MAX_SLOTS];
 uint32_t    md_slot_root[MD_MAX_SLOTS];
 uint16_t    md_slot_imgroot;
+#ifdef CONFIG_MD_CONTAINERS
+uint8_t     md_slot_owner[MD_MAX_SLOTS] = { [0 ... MD_MAX_SLOTS - 1] = MD_NO_SLOT };
+uint16_t    md_slot_base[MD_MAX_SLOTS];
+uint16_t    md_slot_size[MD_MAX_SLOTS];
+#endif
 uint8_t     md_slots;
 uint8_t     md_volumes;
 uint8_t     md_device_lost;
@@ -87,6 +103,8 @@ uint8_t     md_drive_given;
 static uint8_t md_merge_own;    /* lines with device_address go to device 0 */
 static uint8_t md_implicit;     /* device made from the single drive by XV+ */
 static uint8_t load_req;        /* md_load: MD_LOAD_*                       */
+
+static uint8_t first_drive(uint8_t dev);
 
 #if MD_MAX_SLOTS < 2
 #  error CONFIG_MAX_PARTITIONS is too small for multi-drive support
@@ -256,8 +274,8 @@ typedef struct {
  * @h   : receives the parsed values
  *
  * Returns 1 for a drive line with an address of 4..30 or 0 (the own
- * address) and a drive number of 0..9, 0 for comments, blank lines and
- * everything else.
+ * address) and a drive number of 0..9 (or "*", MD_CONTAINER), 0 for
+ * comments, blank lines and everything else.
  */
 static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
   uint16_t i = 0;
@@ -278,9 +296,17 @@ static uint8_t parse_head(uint8_t *line, uint16_t len, md_head_t *h) {
   if (i >= len || line[i++] != ':')
     return 0;
   BLANKS();
-  if (i >= len || !isdigit(line[i]))
-    return 0;
-  h->drive = line[i++] - '0';
+#ifdef CONFIG_MD_CONTAINERS
+  if (i < len && line[i] == '*') {
+    h->drive = MD_CONTAINER;
+    i++;
+  } else
+#endif
+  {
+    if (i >= len || !isdigit(line[i]))
+      return 0;
+    h->drive = line[i++] - '0';
+  }
 
   BLANKS();
   if (i >= len || line[i++] != '=')
@@ -410,13 +436,326 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
   return 1;
 }
 
+#ifdef CONFIG_MD_CONTAINERS
+/* ------------------------------------------------------------------------- */
+/*  Container images: D1M, D2M, D4M (CMD FD), RL (CMD RAMLink)               */
+/* ------------------------------------------------------------------------- */
+
+/* A container holds the partitions of a CMD drive and a partition table   */
+/* of 32 byte entries, 8 in each 256 byte block: partition 0 is the system  */
+/* partition (type 255), the type is at offset 2, the name at 5, the start  */
+/* at 0x15 (3 bytes) and the size at 0x1e (2 bytes, both high byte first).  */
+#define CE_TYPE          2
+#define CE_NAME          5
+#define CE_START         0x15
+#define CE_SIZE          0x1e
+#define CT_SYSTEM        255
+#define CT_NATIVE        1     /* 2: 1541, 3: 1571, 4: 1581 */
+#define CT_MAX_BLOCKS    32    /* table blocks searched at most */
+
+/**
+ * container_table - find the partition table of a container file
+ * @name : name of the file
+ * @fsize: size of the file
+ * @unit : receives the unit of the table entries in 256 byte blocks
+ *
+ * The FD images have their system partition behind 800 KB per density
+ * step, the table 2 KB into it, with 512 byte units. A RAMLink image has
+ * it 2 KB before its end, with 256 byte units. Returns the offset of the
+ * table in 256 byte blocks, 0 if the name has no container extension or
+ * the file cannot hold the table.
+ */
+static uint16_t container_table(uint8_t *name, uint32_t fsize, uint8_t *unit) {
+  uint8_t  *ext = ustrrchr(name, '.');
+  uint32_t table;
+
+  if (ext == NULL)
+    return 0;
+
+  *unit = 2;
+  if (toupper(ext[1]) == 'D' && toupper(ext[3]) == 'M' && ext[4] == 0 &&
+      (ext[2] == '1' || ext[2] == '2' || ext[2] == '4')) {
+    table = (ext[2] - '0') * 0xc8000UL + 0x800;
+  } else if (toupper(ext[1]) == 'R' && toupper(ext[2]) == 'L' && ext[3] == 0 &&
+             fsize >= 0x4000 && !(fsize & 0xff)) {
+    *unit = 1;
+    table = fsize - 0x800;
+  } else {
+    return 0;
+  }
+
+  if (table + 256 > fsize)
+    return 0;
+  return table >> 8;
+}
+
+/**
+ * scan_table - check or mount the partitions of a container
+ * @owner: slot with the open container file in its image handle
+ * @dev  : device the partitions are for, MD_NO_DEVICE to only check
+ * @table: offset of the partition table in 256 byte blocks
+ * @unit : unit of the table entries in 256 byte blocks
+ * @data : 256 byte work area
+ *
+ * Partitions of the types 1541, 1571, 1581 and native become drives,
+ * the others are left out. Every one of them must lie in the file and
+ * have room for its format. Without @dev nothing is changed and the
+ * number of partitions is returned, 0 with the error channel set for
+ * an invalid table. With @dev each partition is mounted on a free slot,
+ * the first one on @owner, and the number of slots used is returned,
+ * 0 if a partition could not be mounted.
+ */
+static uint8_t scan_table(uint8_t owner, uint8_t dev, uint16_t table,
+                          uint8_t unit, uint8_t *data) {
+  FIL      *fil   = &partition[owner].imagehandle;
+  uint32_t blocks = fil->fsize >> 8;
+  uint32_t start, size;
+  uint16_t need;
+  uint8_t  count = 0, k, i, num, slot = owner;
+  uint8_t  *e;
+  UINT     n;
+  path_t   path;
+  uint8_t  dnp[] = ".DNP";      // tells d64_mount a 3 track DNP from a D41
+
+  for (k = 0; k < CT_MAX_BLOCKS && table + k < blocks; k++) {
+    if (f_lseek(fil, (uint32_t)(table + k) << 8) != FR_OK ||
+        f_read(fil, data, 256, &n) != FR_OK || n != 256)
+      goto invalid;
+
+    for (i = 0, e = data; i < 8; i++, e += 32) {
+      num = k * 8 + i;
+      if (num == 0) {
+        if (e[CE_TYPE] != CT_SYSTEM)
+          goto invalid;
+        continue;
+      }
+      if (e[CE_TYPE] < CT_NATIVE || e[CE_TYPE] > 4)
+        continue;               // empty, or no drive (CP/M, print buffer, ...)
+      if (num > MD_MAX_PART)
+        goto invalid;
+
+      start = (((uint32_t)e[CE_START] << 16) |
+               ((uint16_t)e[CE_START+1] << 8) | e[CE_START+2]) * unit;
+      size  = (((uint16_t)e[CE_SIZE] << 8) | e[CE_SIZE+1]) * (uint32_t)unit;
+
+      /* the part of the partition its format uses */
+      switch (e[CE_TYPE]) {
+      case 2:  need =  683; break;
+      case 3:  need = 1366; break;
+      case 4:  need = 3200; break;
+      default:                  // native: whole tracks of 64 KB
+        need = size > 255 * 256UL ? 255 * 256U : size & ~0xffUL;
+        if (need == 0)
+          goto invalid;
+        break;
+      }
+      if (need > size || start > 0xffff || start + need > blocks)
+        goto invalid;
+
+      if (dev == MD_NO_DEVICE) {
+        count++;
+        continue;
+      }
+
+      /* mount it on the next free slot, the first one on the owner */
+      if (count)
+        for (slot = 0; md_slot_dev[slot] != MD_NO_DEVICE ||
+                       md_slot_owner[slot] != MD_NO_SLOT; slot++) ;
+      partition[slot].fop             = &fatops;
+      partition[slot].fatfs           = partition[owner].fatfs;
+      partition[slot].current_dir.fat = md_slot_root[owner];
+      md_slot_owner[slot] = owner;
+      md_slot_base[slot]  = start;
+      md_slot_size[slot]  = need;
+      path.part = slot;
+      path.dir  = partition[slot].current_dir;
+      if (d64_mount(&path, dnp)) {
+        md_slot_owner[slot] = MD_NO_SLOT;
+        return 0;
+      }
+      partition[slot].fop         = &d64ops;
+      partition[slot].current_dir = path.dir;
+      md_slot_root[slot] = md_slot_root[owner];
+      md_slot_imgroot   |= 1U << slot;
+      md_slot_dev[slot]  = dev;
+      md_slot_drv[slot]  = num;
+      count++;
+    }
+
+    if (data[0] == 0)
+      break;                    // no link to a further table block
+  }
+
+  if (count)
+    return count;
+
+ invalid:
+  set_error(ERROR_IMAGE_INVALID);
+  return 0;
+}
+
+/**
+ * mount_container - set up all partitions of a container image
+ * @path : path of the container file like for mount_slot, modified
+ * @dev  : device the partitions are for
+ * @owner: free slot for the first partition, which holds the file
+ * @start: like for mount_slot
+ *
+ * Returns the number of slots used, 0 with the error channel set if
+ * the container could not be mounted completely. Then nothing changed.
+ * md_active must be 0, like for mount_slot.
+ */
+static uint8_t mount_container(uint8_t *path, uint8_t dev, uint8_t owner,
+                               uint8_t start) {
+  uint8_t     *name, *p, saved = 0, unit = 0, count, nfree, i, err;
+  uint16_t    table = 0;
+  buffer_t    *buf;
+  cbmdirent_t *dent;
+  path_t      dir;
+  FRESULT     res;
+  FIL         *fil = &partition[owner].imagehandle;
+
+  /* the directory part goes to mount_slot, the name is the file */
+  strip_trailing(path);
+  name = path;
+  for (p = path; *p; p++)
+    if (*p == '/' || *p == ':')
+      name = p + 1;
+  if (!*name) {
+    set_error(ERROR_SYNTAX_NONAME);
+    return 0;
+  }
+  if (name == path || name[-1] == ':') {
+    if (name != path)
+      name[-1] = 0;             // "2:NAME": partition 2, ":NAME": start dir
+    p = (name == path) ? name + ustrlen(name) : path;
+  } else {
+    saved   = *name;            // "...DIR/NAME": keep the slash
+    *name   = 0;
+    p       = path;
+  }
+  i = mount_slot(p, owner, start);
+  if (saved)
+    *name = saved;
+  if (!i)
+    return 0;
+  if (partition[owner].fop != &fatops) {
+    image_unmount(owner);       // a directory part inside an image
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    return 0;
+  }
+  if (start == MD_NO_SLOT)
+    asc2pet(name);
+
+  buf = alloc_system_buffer();
+  if (!buf)
+    return 0;
+  dent = (cbmdirent_t *)buf->data;
+  count = 0;
+
+  /* find and open the file */
+  dir.part = owner;
+  dir.dir  = partition[owner].current_dir;
+  if (first_match(&dir, name, FLAG_HIDDEN, dent))
+    goto done;
+  if ((dent->typeflags & TYPE_MASK) == TYPE_DIR) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    goto done;
+  }
+  part_fatfs(owner)->curr_dir = dir.dir.fat;
+  res = f_open(part_fatfs(owner), fil, dent->pvt.fat.realname,
+               FA_OPEN_EXISTING | FA_READ | FA_WRITE);
+  if (res == FR_DENIED || res == FR_WRITE_PROTECTED)
+    res = f_open(part_fatfs(owner), fil, dent->pvt.fat.realname,
+                 FA_OPEN_EXISTING | FA_READ);
+  if (res != FR_OK) {
+    parse_error(res, 1);
+    goto done;
+  }
+  table = container_table(dent->pvt.fat.realname, fil->fsize, &unit);
+  if (table == 0) {
+    set_error(ERROR_FILE_TYPE_MISMATCH);
+    goto close;
+  }
+
+  /* check everything first, the partitions must all fit */
+  count = scan_table(owner, MD_NO_DEVICE, table, unit, buf->data);
+  if (count == 0)
+    goto close;
+  for (i = 0, nfree = 0; i < MD_MAX_SLOTS; i++)
+    if (md_slot_dev[i] == MD_NO_DEVICE && md_slot_owner[i] == MD_NO_SLOT)
+      nfree++;
+  if (count > nfree) {
+    count = 0;
+    set_error(ERROR_NO_CHANNEL);
+    goto close;
+  }
+
+  count = scan_table(owner, dev, table, unit, buf->data);
+  if (count) {
+    md_dev[dev].table = table;
+    set_error(ERROR_OK);
+    goto done;
+  }
+
+  /* undo: a partition could not be mounted */
+  err = current_error;
+  for (i = 0; i < MD_MAX_SLOTS; i++)
+    if (md_slot_owner[i] == owner)
+      md_slot_dev[i] = MD_NO_DEVICE;
+  if (partition[owner].fop != &fatops) {
+    image_unmount(owner);       // closes the file too
+    set_error(err);
+    goto done;
+  }
+  md_slot_owner[owner] = MD_NO_SLOT;
+  set_error(err);
+
+ close:
+  f_close(fil);
+ done:
+  free_buffer(buf);
+  return count;
+}
+
+/**
+ * md_table_name - read a partition name from the table of a container
+ * @part: a partition of the container
+ * @num : partition number, 0 for the system partition
+ * @name: receives the name, CBM_NAME_LENGTH+1 bytes
+ *
+ * The name is 0-terminated, without its padding. Returns 0 if
+ * successful, otherwise the error channel is set.
+ */
+uint8_t md_table_name(uint8_t part, uint8_t num, uint8_t *name) {
+  FIL     *fil = &partition[md_slot_owner[part]].imagehandle;
+  FRESULT res;
+  UINT    n;
+  uint8_t i;
+
+  res = f_lseek(fil, ((uint32_t)md_dev[md_slot_dev[part]].table << 8) +
+                     num * 32 + CE_NAME);
+  if (res == FR_OK)
+    res = f_read(fil, name, CBM_NAME_LENGTH, &n);
+  if (res != FR_OK) {
+    parse_error(res, 1);
+    return 1;
+  }
+  name[CBM_NAME_LENGTH] = 0;
+  for (i = CBM_NAME_LENGTH; i-- && (name[i] == 0xa0 || name[i] == ' '); )
+    name[i] = 0;
+  return 0;
+}
+#endif
+
 /**
  * apply_line - parse one line of the configuration file
  * @line : 0-terminated line, ASCII
  * @slot : next free partition slot
  *
- * Returns 1 if a slot was used, 0 otherwise. The line buffer must be
- * the command buffer, it is modified in place.
+ * Returns the number of slots used (more than one for a container),
+ * 0 if none. The line buffer must be the command buffer, it is
+ * modified in place.
  */
 static uint8_t apply_line(uint8_t *line, uint8_t slot) {
   uint8_t dev;
@@ -427,6 +766,16 @@ static uint8_t apply_line(uint8_t *line, uint8_t slot) {
 
   /* devices were created in the first pass, drive 0 made them dual */
   dev = find_device(file_key(h.address));
+#ifdef CONFIG_MD_CONTAINERS
+  /* a container device has its partitions and nothing else */
+  if (dev != MD_NO_DEVICE && h.drive == MD_CONTAINER) {
+    if (md_dev[dev].dual || first_drive(dev) != MD_NO_SLOT)
+      return 0;
+    return mount_container(line + h.path_start, dev, slot, MD_NO_SLOT);
+  }
+  if (dev != MD_NO_DEVICE && md_dev[dev].table)
+    return 0;
+#endif
   if (dev == MD_NO_DEVICE || (md_dev[dev].dual && h.drive > 1) ||
       find_slot(dev, h.drive) != MD_NO_SLOT)
     return 0;
@@ -563,7 +912,12 @@ static FRESULT put_line(FIL *out, md_edit_t *e, uint8_t crlf) {
   uint8_t mid[5] = { ':', '0', ' ', '=', ' ' };
   FRESULT res;
 
-  mid[1] += e->drive;
+#ifdef CONFIG_MD_CONTAINERS
+  if (e->drive == MD_CONTAINER)
+    mid[1] = '*';
+  else
+#endif
+    mid[1] += e->drive;
   res = put_address(out, e->address);
   if (res == FR_OK)
     res = put(out, mid, sizeof(mid));
@@ -770,6 +1124,9 @@ static void md_reset(void) {
   md_slot_imgroot = 0;
   memset(md_dev, 0, sizeof(md_dev));
   memset(md_slot_dev, MD_NO_DEVICE, sizeof(md_slot_dev));
+#ifdef CONFIG_MD_CONTAINERS
+  memset(md_slot_owner, MD_NO_SLOT, sizeof(md_slot_owner));
+#endif
 }
 
 /* The slot a device starts with: drive 0 of a CBM DOS 2 drive (which  */
@@ -777,7 +1134,7 @@ static void md_reset(void) {
 static uint8_t first_drive(uint8_t dev) {
   uint8_t d, s;
 
-  for (d = 0; d <= MD_MAX_DRIVE; d++) {
+  for (d = 0; d <= MD_MAX_PART; d++) {
     if (d == 0 && !md_dev[dev].dual)
       continue;
     s = find_slot(dev, d);
@@ -1078,6 +1435,12 @@ static void xv_add(uint8_t *line) {
 
   addr = h.address ? h.address : device_address;
   dev  = md_find(addr);
+#ifdef CONFIG_MD_CONTAINERS
+  /* a container makes a new device, which takes no other drives */
+  if (dev != MD_NO_DEVICE &&
+      (h.drive == MD_CONTAINER || md_dev[dev].table))
+    goto syntax;
+#endif
   if (dev != MD_NO_DEVICE) {
     if (was_single || dev == md_implicit ||
         find_slot(dev, h.drive) != MD_NO_SLOT)
@@ -1097,6 +1460,7 @@ static void xv_add(uint8_t *line) {
     for (newdev = 0; newdev < MD_MAX_DEVICES && md_dev[newdev].address; newdev++) ;
     if (newdev == MD_MAX_DEVICES)
       goto nochannel;
+    memset(&md_dev[newdev], 0, sizeof(md_device_t));   // still unused
   }
 
   for (slot = 0; slot < MD_MAX_SLOTS && md_slot_dev[slot] != MD_NO_DEVICE; slot++) ;
@@ -1104,14 +1468,18 @@ static void xv_add(uint8_t *line) {
     goto nochannel;
 
   md_active = 0;
-  ok = mount_slot(line + h.path_start, slot, current_part);
+#ifdef CONFIG_MD_CONTAINERS
+  if (h.drive == MD_CONTAINER)
+    ok = mount_container(line + h.path_start, newdev, slot, current_part);
+  else
+#endif
+    ok = mount_slot(line + h.path_start, slot, current_part);
   md_active = 1;
   if (!ok)
     goto undo;
 
   if (newdev != MD_NO_DEVICE) {
     dev = newdev;
-    memset(&md_dev[dev], 0, sizeof(md_device_t));
     md_dev[dev].address      = addr;
     md_dev[dev].file_address = MD_FA_RUNTIME;
     md_dev[dev].err_code     = ERROR_DOSVERSION;
@@ -1121,6 +1489,16 @@ static void xv_add(uint8_t *line) {
     md_dev[dev].dual = 1;
     set_cur(dev, slot);
   }
+#ifdef CONFIG_MD_CONTAINERS
+  if (h.drive == MD_CONTAINER) {
+    /* the partitions have their slots already, the first one is current */
+    for (i = 0; i < MD_MAX_SLOTS; i++)
+      if (md_slot_dev[i] != MD_NO_DEVICE && i >= md_slots)
+        md_slots = i + 1;
+    set_error(ERROR_OK);
+    return;
+  }
+#endif
   md_slot_dev[slot] = dev;
   md_slot_drv[slot] = h.drive;
   if (slot >= md_slots)
@@ -1160,9 +1538,14 @@ static void xv_delete(uint8_t addr, uint8_t drive) {
     goto syntax;
 
   if (drive != MD_NO_SLOT) {
-    /* the device made from the single drive has fixed drives */
+    /* the device made from the single drive has fixed drives, */
+    /* a container device has all partitions of the container  */
     if (!md_active || dev == md_implicit)
       goto syntax;
+#ifdef CONFIG_MD_CONTAINERS
+    if (md_dev[dev].table)
+      goto syntax;
+#endif
     slot = find_slot(dev, drive);
     if (slot == MD_NO_SLOT)
       goto syntax;
