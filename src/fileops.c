@@ -293,33 +293,54 @@ static uint8_t dir_footer(buffer_t *buf) {
 static uint8_t pdir_refill(buffer_t* buf) {
   cbmdirent_t dent;
 
+  uint8_t part;
+
   buf->position = 0;
 
   /* read volume name */
-  while(buf->pvt.pdir.part < max_part) {
-    /* multi-drive: only the drives of the addressed device */
-    if (!md_part_visible(buf->pvt.pdir.part)) {
-      buf->pvt.pdir.part++;
-      continue;
+  /* multi-drive: the drives of the addressed device by drive number */
+  while (buf->pvt.pdir.part < (md_active ? MD_MAX_DRIVE + 1 : max_part)) {
+    part = buf->pvt.pdir.part++;
+#ifdef CONFIG_MULTIDRIVE
+    if (md_active) {
+      /* drive 0 of a CMD device is the current partition, not a drive */
+      if (part == 0 && !md_is_cbmdos())
+        continue;
+      part = md_drive_slot(part);
+      if (part == MD_NO_SLOT)
+        continue;
     }
 
-    if (disk_label(buf->pvt.pdir.part, dent.name)) {
+    if (md_active && partition[part].fop == &fatops) {
+      /* a directory: its name, like the header of its directory */
+      path_t root;
+
+      root.part    = part;
+      root.dir.fat = md_root_cluster(part);
+      if (dir_label(&root, dent.name)) {
+        free_buffer(buf);
+        return 1;
+      }
+      dent.name[CBM_NAME_LENGTH] = 0;
+      for (uint8_t i = CBM_NAME_LENGTH; i-- && dent.name[i] == ' '; )
+        dent.name[i] = 0;
+    } else
+#endif
+    if (disk_label(part, dent.name)) {
       free_buffer(buf);
       return 1;
     }
 
-    dent.blocksize = md_part_number(buf->pvt.pdir.part);
+    dent.blocksize = md_part_number(part);
 
-    if (partition[buf->pvt.pdir.part].fop == &d64ops) {
+    if (partition[part].fop == &d64ops) {
       /* Use the correct partition type for Dxx images */
-      dent.typeflags = (partition[buf->pvt.pdir.part].imagetype & D64_TYPE_MASK)
+      dent.typeflags = (partition[part].imagetype & D64_TYPE_MASK)
                        + TYPE_NAT - 1;
     } else {
       /* Anything else is "native" */
       dent.typeflags = TYPE_NAT;
     }
-
-    buf->pvt.pdir.part++;
 
     /* Parse the name pattern */
     if (buf->pvt.pdir.matchstr &&
@@ -522,6 +543,21 @@ static void load_directory(uint8_t secondary) {
 
         /* set partition number */
         buf->data[HEADER_OFFSET_DRIVE] = max_part;
+
+#ifdef CONFIG_MULTIDRIVE
+        if (md_active) {
+          /* the number of drives of the addressed device */
+          buf->data[HEADER_OFFSET_DRIVE] = 0;
+          for (pos = 0; pos < max_part; pos++)
+            if (md_part_visible(pos))
+              buf->data[HEADER_OFFSET_DRIVE]++;
+          pos = 1;
+
+          /* a CBM DOS 2 drive has no partitions, so no system partition */
+          if (md_is_cbmdos())
+            buf->lastused = 31;
+        }
+#endif
 
         /* Let the refill callback handle everything else */
         buf->refill = pdir_refill;
