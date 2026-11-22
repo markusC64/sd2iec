@@ -954,17 +954,31 @@ static void parse_block(void) {
   str++;
   switch (*str) {
   case 'R':
-  case 'W':
+  case 'W': {
     /* Block-Read  - CD56 */
     /* Block-Write - CD73 */
+    uint8_t part;
+
     buf = find_buffer(params[0]);
     if (!buf) {
       set_error(ERROR_NO_CHANNEL);
       return;
     }
 
+    /* CMD DOS ignores the drive parameter, the channel keeps the  */
+    /* partition it was opened in. On a CBM DOS 2 device it is the */
+    /* drive, as on a 4040 or 8050: U1:2,1,18,0 reads drive 1.     */
+    part = buf->pvt.buffer.part;
+    if (md_is_cbmdos() && pcount >= 2) {
+      part = md_drive_slot(params[1]);
+      if (part == MD_NO_SLOT) {
+        set_error(ERROR_DRIVE_NOT_READY);
+        return;
+      }
+    }
+
     if (*str == 'R') {
-      read_sector(buf, buf->pvt.buffer.part, params[2], params[3]);
+      read_sector(buf, part, params[2], params[3]);
       if (command_buffer[0] == 'B') {
         buf->position = 1;
         buf->lastused = buf->data[0];
@@ -975,9 +989,10 @@ static void parse_block(void) {
     } else {
       if (command_buffer[0] == 'B')
         buf->data[0] = buf->position-1; // FIXME: Untested, verify!
-      write_sector(buf, buf->pvt.buffer.part, params[2], params[3]);
+      write_sector(buf, part, params[2], params[3]);
     }
     break;
+  }
 
   case 'P':
     /* Buffer-Position - CDBD */

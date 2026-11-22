@@ -871,6 +871,7 @@ Drive numbers of a CBM DOS 2 device:
   NAME (write)           drive 0
   0:NAME, 1:NAME         drive 0 or drive 1
   1:NAME (single drive)  74,DRIVE NOT READY
+  U1:2,1,18,0            block of drive 1 (also U2, B-R, B-W)
 
 So the BASIC 4 commands work as expected, e.g. DIRECTORY D1,U9,
 DLOAD"NAME",D1,U9 or COPY D0,"OLD" TO D1,"NEW",U9. The C command copies
@@ -881,7 +882,10 @@ Drive numbers of a CMD device work like partitions (see "Partitions"
 above), but only the drives of the addressed device exist: "$=P" lists
 them, "CP2" selects drive 2, "$2" or "2:NAME" access it. A drive number
 that does not exist gives 74,DRIVE NOT READY, like for a CBM DOS 2
-device. The current partition is kept per device.
+device. The current partition is kept per device. The block commands
+(U1, U2, B-R, B-W) ignore their drive number like CMD DOS: a direct
+access channel ("#") keeps the partition that was current when it was
+opened.
 
 CD, MD and RD take the drive number right after the command, e.g.
 CD1:GAMES, CD1/GAMES/ACTION/, CD1// or CD1:<left arrow>. Each drive keeps
