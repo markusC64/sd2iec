@@ -363,6 +363,9 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
   /* At least two characters precede the path ("8:0=" in the file,    */
   /* "XV+" in the command). Nothing means the start directory itself. */
   if (*path) {
+    uint32_t before = partition[slot].current_dir.fat;
+    uint8_t  last;
+
     if (path[0] == '/' || path[0] == ':') {
       path -= 1;                // "//DIR/", "/DIR/NAME", ":NAME"
     } else {
@@ -372,6 +375,7 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
     path[0] = '1' + slot;
     if (start == MD_NO_SLOT)
       asc2pet(path + 1);
+    last = path[ustrlen(path) - 1];
 
     set_error(ERROR_OK);
     do_chdir(path);
@@ -379,6 +383,16 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
       if (partition[slot].fop != &fatops)
         image_unmount(slot);
       partition[slot].fop = &fatops;
+      return 0;
+    }
+
+    /* CD into a file that is neither a directory nor a disk image  */
+    /* succeeds without changing anything. A drive must not end up  */
+    /* in the start directory instead, e.g. for an unknown format.  */
+    if (partition[slot].fop == &fatops &&
+        partition[slot].current_dir.fat == before &&
+        last != '/' && last != ':' && last != '_') {
+      set_error(ERROR_FILE_TYPE_MISMATCH);
       return 0;
     }
   }

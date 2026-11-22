@@ -640,9 +640,11 @@ Supported commands:
              device. 30,SYNTAX ERROR for a wrong line, a drive that exists
              or does not fit the device (drive 0 makes a CBM DOS 2 device,
              which has drive 1 at most) or a relative path while the
-             current directory is inside a disk image, 70,NO CHANNEL if
-             no drive or device is free, otherwise the error of the path
-             (e.g. 62,FILE NOT FOUND) if it does not exist.
+             current directory is inside a disk image, 64,FILE TYPE
+             MISMATCH if the path names a file that is neither a
+             directory nor a disk image, 70,NO CHANNEL if no drive or
+             device is free, otherwise the error of the path (e.g.
+             62,FILE NOT FOUND) if it does not exist.
     XV-a:d   Delete drive d of device a.
     XV-a     Delete device a.
     XV-      Delete all devices, sd2iec is a single drive again.
@@ -937,8 +939,9 @@ Rules:
   both drives corrupts it.
 
 The file is read at power-on and after every card change, unless this
-is switched off with XVA- (see below). A drive whose path does not exist
-is missing. A device without drives, or a CBM DOS 2 device whose drive 0
+is switched off with XVA- (see below). A drive whose path does not exist,
+or names a file that is neither a directory nor a disk image, is
+missing. A device without drives, or a CBM DOS 2 device whose drive 0
 is missing, does not exist. If no device is usable, sd2iec stays a
 single drive.
 
