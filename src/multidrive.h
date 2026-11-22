@@ -32,15 +32,15 @@
 #define MD_MAX_DRIVE     9     /* highest drive number in the file     */
 
 /* The drives of all devices together get the partition table, except  */
-/* for the entry of the EEPROM file system. The slot number must fit    */
-/* into a single digit for do_chdir, so there are at most 9.            */
+/* for the entry of the EEPROM file system. There are at most 16, so    */
+/* md_slot_imgroot fits into 16 bits.                                   */
 #ifdef CONFIG_HAVE_EEPROMFS
 #  define MD_RESERVED_PARTS 1
 #else
 #  define MD_RESERVED_PARTS 0
 #endif
-#if CONFIG_MAX_PARTITIONS - MD_RESERVED_PARTS > 9
-#  define MD_MAX_SLOTS   9
+#if CONFIG_MAX_PARTITIONS - MD_RESERVED_PARTS > 16
+#  define MD_MAX_SLOTS   16
 #else
 #  define MD_MAX_SLOTS   (CONFIG_MAX_PARTITIONS - MD_RESERVED_PARTS)
 #endif

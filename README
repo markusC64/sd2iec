@@ -839,7 +839,7 @@ partitions of the card.
 
 The drives of all devices together come from a pool of partitions:
 CONFIG_MAX_PARTITIONS, minus one for the EEPROM file system (if
-available), but at most 9 drives. CONFIG_MAX_VOLUMES sets how many FAT
+available), but at most 16 drives. CONFIG_MAX_VOLUMES sets how many FAT
 partitions of the card can be used for them (default: as many as
 CONFIG_MAX_PARTITIONS). Each of them costs a FAT volume structure with
 a sector buffer in RAM, so keep it small.

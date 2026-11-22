@@ -303,8 +303,8 @@ static void strip_trailing(uint8_t *str) {
 
 /**
  * mount_slot - set up a partition slot for a path
- * @path : path, 0-terminated, at least two bytes after the start of the
- *         buffer it is in, which is modified in place
+ * @path : path, 0-terminated, at least three bytes after the start of
+ *         the buffer it is in, which is modified in place
  * @slot : partition slot
  * @start: partition whose current directory relative paths start in,
  *         MD_NO_SLOT for DRIVES.CFG: the root, and the path is ASCII
@@ -359,22 +359,25 @@ static uint8_t mount_slot(uint8_t *path, uint8_t slot, uint8_t start) {
     }
   }
 
-  /* Build a legacy CD string for the slot: "<slot+1>" and the path.  */
-  /* At least two characters precede the path ("8:0=" in the file,    */
-  /* "XV+" in the command). Nothing means the start directory itself. */
+  /* Build a legacy CD string for the slot: "<slot+1>" and the path,  */
+  /* one or two digits. At least three characters precede the path     */
+  /* ("8:0=" in the file, "XV+" in the command). Nothing means the     */
+  /* start directory itself.                                           */
   if (*path) {
     uint32_t before = partition[slot].current_dir.fat;
-    uint8_t  last;
+    uint8_t  last, num = slot + 1;
 
-    if (path[0] == '/' || path[0] == ':') {
-      path -= 1;                // "//DIR/", "/DIR/NAME", ":NAME"
-    } else {
-      path -= 2;                // "DIR/NAME" or "NAME"
-      path[1] = ustrchr(path + 2, '/') ? '/' : ':';
+    if (path[0] != '/' && path[0] != ':') {
+      /* "DIR/NAME" or "NAME", the others are "//DIR/", "/DIR/NAME", ":NAME" */
+      path--;
+      path[0] = ustrchr(path + 1, '/') ? '/' : ':';
     }
-    path[0] = '1' + slot;
+    do {
+      *--path = '0' + num % 10;
+      num /= 10;
+    } while (num);
     if (start == MD_NO_SLOT)
-      asc2pet(path + 1);
+      asc2pet(path);            // digits, '/' and ':' stay as they are
     last = path[ustrlen(path) - 1];
 
     set_error(ERROR_OK);

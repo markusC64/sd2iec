@@ -51,8 +51,13 @@
 /* from menu.c */
 uint8_t menu_edit_value(uint8_t v, uint8_t min, uint8_t max);
 
-#define PATH_BUFFERS  ((MD_MAX_SLOTS * MD_PATH_MAX + 255) / 256)
-#define PATH_SLOTS    MD_MAX_SLOTS
+/* one path per drive line, but no more lines than the table holds */
+#if MD_MAX_SLOTS < MD_EDIT_MAX
+#  define PATH_SLOTS  MD_MAX_SLOTS
+#else
+#  define PATH_SLOTS  MD_EDIT_MAX
+#endif
+#define PATH_BUFFERS  ((PATH_SLOTS * MD_PATH_MAX + 255) / 256)
 #define NONE          0xff
 
 /* list rows after the drives */
