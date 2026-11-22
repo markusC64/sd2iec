@@ -1,6 +1,8 @@
 /*
    SD2IEC LCD - SD/MMC to Commodore IEC bus controller with LCD support.
    Created 2008,2009 by Sascha Bader <sbader01@hotmail.com>
+   Copyright (C) 2008-2021
+   Sascha Bader <sbader01@hotmail.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,10 +26,14 @@
 #include "uart.h"
 #include <util/delay.h>
 
+
+
+
 uint8_t buffer_msg[3];
 uint8_t fs_mode;
 uint8_t lcdcontrast;  // andi6510: global LCD contrast setting
 
+volatile uint8_t ready_msg_only_once;
 
 static const char  mychars[64] PROGMEM = {
 			0x00, 0x01, 0x07, 0x0F, 0x0F, 0x1E, 0x1C, 0x1C,
@@ -80,14 +86,18 @@ void lcd_setCustomChars()
 
 	if (lcd_controller_type() != 0)
 	{
-		lcd_command(0x40);  // write to CGRAM
+
+        lcd_init(LCD_DISP_ON); // This is missing a long time...
+        lcd_command(0x40);      // set CGRAM address - first character
+
+
 		progmem_s  = (char *) mychars;
 		for (int i=0;i<64;i++)
 		{
-		  _delay_us(64);
 		  lcd_data( pgm_read_byte(progmem_s++) );
 		}
 	}
+
 }
 
 void lcd_eee()
@@ -118,9 +128,10 @@ void lcd_logo()
 {
 	if (lcd_controller_type() != 0)
 	{
+
 		lcd_setCustomChars();
-		lcd_clrscr();
-		lcd_putc(0); // andi6510 - initally the character 8 was set but on my DOG-M display this was not the correct one...
+                lcd_gotoxy(0,0);
+                lcd_putc(0); // andi6510 - initally the character 8 was set but on my DOG-M display this was not the correct one...
 		lcd_putc(1);
 		lcd_putc(2);
 		lcd_gotoxy(0,1);
@@ -130,7 +141,7 @@ void lcd_logo()
 		lcd_gotoxy(4,0);
 		lcd_puts_p(PSTR("Commodore"));
 		lcd_gotoxy(4,1);
-		lcd_puts_p(PSTR("never dies!"));
+                lcd_puts_p(PSTR("never dies!"));
 	}
 }
 

@@ -1,0 +1,18 @@
+Last update 9.1.2023
+
+How to build ARM compiling environment on Windows OS for SD2IEC LPC1768 variants
+ 
+NOTE
+These step by step instructions assume that the MSYS is installed on your Windows system.If not, please read doc\Arduino\Arduino_LCD.txt, section: "SD2IEC development environment for Windows XP and above" and build a portable MSYS first. 
+
+1. Download gcc4arm from
+
+https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/6_1-2017q1/gcc-arm-none-eabi-6-2017-q1-update-win32.zip
+
+Unzip the complete zip file to C:\gcc4arm
+
+2. Add PATH variable (next 2 lines) in the Msys RunMe.bat file 
+   set mbed-dev_PATH=%CD:~0,2%\gcc4arm
+   set PATH=%PATH%;%mbed-dev_PATH%\bin
+
+3, Try if works.

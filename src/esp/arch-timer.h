@@ -1,0 +1,54 @@
+/* sd2iec - SD/MMC to Commodore serial bus interface/controller
+   Copyright (C) 2022 Jarkko Sonninen <kasper@iki.fi>
+   Copyright (C) 2007-2017  Ingo Korb <ingo@akana.de>
+
+   Inspired by MMC2IEC by Lars Pontoppidan et al.
+
+   FAT filesystem access based on code from ChaN and Jim Brain, see ff.c|h.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License only.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+
+   arch-timer.h: Architecture-specific system timer definitions
+
+*/
+
+#ifndef ARCH_TIMER_H
+#define ARCH_TIMER_H
+
+/* Types for unsigned and signed tick values */
+typedef uint32_t tick_t;
+typedef int32_t stick_t;
+
+/* Delay functions */
+#define delay_us ets_delay_us
+
+static inline void delay_ms(unsigned int time) {
+  // This is used only in some fastloaders and time <= 20ms
+  ets_delay_us(time * 1000);
+}
+
+/* Timeout functions */
+// FIXME: Accurate enough as function?
+void start_timeout(uint32_t usecs);
+unsigned int has_timed_out(void);
+
+// https://sub.nanona.fi/esp8266/timing-and-ticks.html
+static inline int32_t asm_ccount(void) {
+    int32_t r;
+    asm volatile ("rsr %0, ccount" : "=r"(r));
+    return r;
+}
+
+#endif

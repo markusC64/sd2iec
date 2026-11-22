@@ -22,7 +22,6 @@
    llfl-dreamload.c: Low level handling of Dreamload fastloader
 
 */
-
 #include <stdbool.h>
 #include "config.h"
 #include "bitband.h"

@@ -44,6 +44,7 @@
 #define EEE
 #define DS_EEE lcd_eee();
 #define DS_CONTRAST(A) lcd_contrast(A);
+#define DS_Logo lcd_logo();
 
 #define DS_TITLE lcd_clrline(0); lcd_puts_p(PSTR("SD2IEC " LCDVERSION));
 #define DS_DIR lcd_clrline(1); lcd_puts_p(PSTR("L:$"));
@@ -63,5 +64,5 @@ void lcd_path(char * path);
 void lcd_contrast(uint8_t contrast);
 extern uint8_t fs_mode;
 extern uint8_t lcdcontrast;
-
+extern volatile uint8_t ready_msg_only_once;//display READY msg once, do not repeat (by Poldi)
 #endif
