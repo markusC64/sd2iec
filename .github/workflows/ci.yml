@@ -22,6 +22,22 @@ jobs:
          mkdir bin
          cp obj-m1284p-petSD+/NODISKEMU.bin bin/sd2iec-1.0.0atentdead0-${VER}${PLUS}-$REV-petSD+.bin
 
+    - name: Flash usage
+      if: always()
+      run: |
+         # .text and .data go into the binary, the boot loader needs the rest
+         for elf in obj-m*/*.elf; do
+           [ -f "$elf" ] || continue
+           case "$elf" in
+             obj-m644*)  max=$((0xf000))  ;;
+             obj-m2561*) max=$((0x3f000)) ;;
+             *)          max=$((0x1f000)) ;;
+           esac
+           avr-size -A "$elf" | awk -v f="$elf" -v max=$max '
+             $1 == ".text" || $1 == ".data" { n += $2 }
+             END { printf "%-40s %6d of %6d bytes, %6d free\n", f, n, max, max - n }'
+         done
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
