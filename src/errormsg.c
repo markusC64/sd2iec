@@ -42,6 +42,7 @@
 #include "display_lcd.h"
 #include "iec.h"
 #endif
+#include "multidrive.h"
 
 uint8_t current_error;
 #ifdef CONFIG_MULTIDRIVE

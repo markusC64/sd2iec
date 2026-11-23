@@ -36,6 +36,7 @@
 #include "display_lcd.h"
 #include "iec.h"
 #endif
+#include "multidrive.h"
 
 dh_t    matchdh;
 uint8_t ops_scratch[45];
