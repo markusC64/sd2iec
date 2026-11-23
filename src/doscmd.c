@@ -1255,7 +1255,7 @@ static void parse_changepart(void) {
      char Buffer4part[3];
     DS_TITLE;
     DS_SHOWP(1,"Partion: ");
-    utoa((part+1),Buffer4part,10);
+    utoa(md_part_number(part),Buffer4part,10);
     DS_PUTS((char *) Buffer4part);
 #endif
 }

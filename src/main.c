@@ -151,7 +151,7 @@ int main(void) {
 
 #ifdef CONFIG_LCD_DISPLAY
 
-  DS_READY(device_address);
+  DS_READY(MD_CUR_ADDRESS);
   fs_mode = 0;
 
   /* clear display and home cursor */

@@ -318,7 +318,7 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
 #ifdef CONFIG_LCD_DISPLAY
 if (ready_msg_only_once == 0) {
     ready_msg_only_once = 1;
-    DS_READY(device_address);
+    DS_READY(MD_CUR_ADDRESS);
     }
 #endif
   }
