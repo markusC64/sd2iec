@@ -308,7 +308,7 @@ void set_error_ts(uint8_t errornum, uint8_t track, uint8_t sector) {
     set_error_led(0);
 
 #ifdef CONFIG_LCD_DISPLAY
-    DS_READY(device_address);
+    DS_READY(MD_CUR_ADDRESS);
 #endif
   }
   buffers[ERRORBUFFER_IDX].lastused = msg - error_buffer;

@@ -229,7 +229,7 @@ void free_buffer(buffer_t *buffer) {
   update_leds();
 
 #ifdef CONFIG_LCD_DISPLAY
-  if (active_buffers == 0 && !(led_state & LED_ERROR)) DS_READY(device_address);
+  if (active_buffers == 0 && !(led_state & LED_ERROR)) DS_READY(MD_CUR_ADDRESS);
 #endif
 }
 
