@@ -39,7 +39,7 @@ static __attribute__((noreturn)) void (*restart_call)(void) = 0;
 /* MCU doesn't disable the WDT after reset!                  */
 /* This function is merged into the startup and doesn't need to be called explicitly */
 void get_mcusr(void) \
-      __attribute__((naked)) \
+      __attribute__((naked, used)) \
       __attribute__((section(".init3")));
 void get_mcusr(void)
 {
@@ -49,7 +49,7 @@ void get_mcusr(void)
 
 #ifdef CONFIG_MEMPOISON
 void poison_memory(void) \
-  __attribute__((naked)) \
+  __attribute__((naked, used)) \
   __attribute__((section(".init1")));
 void poison_memory(void) {
   register uint16_t i;

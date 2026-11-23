@@ -42,7 +42,6 @@
 #include "lcd.h"
 
 void board_diagnose(void) {
-  char buffer[32];
   unsigned int counter = 0;
 
   lcd_init();
@@ -64,9 +63,7 @@ void board_diagnose(void) {
     efuse = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
   }
 
-  snprintf(buffer, sizeof(buffer), "L:%02X H:%02X E:%02X ",
-        lfuse, hfuse, efuse);
-  lcd_puts(buffer);
+  lcd_printf("L:%02X H:%02X E:%02X ", lfuse, hfuse, efuse);
   if (lfuse == CONFIG_LFUSE &&
       hfuse == CONFIG_HFUSE &&
       efuse == CONFIG_EFUSE) lcd_puts_P(PSTR("OK"));
@@ -87,8 +84,7 @@ void board_diagnose(void) {
     }
 
     lcd_locate(5,0);
-    snprintf(buffer, sizeof(buffer), "%4u", ADCW);
-    lcd_puts(buffer);
+    lcd_printf("%4u", ADCW);
 
     lcd_locate(13,0);
     lcd_putc(sdcard_detect() ? 'Y' : 'N');

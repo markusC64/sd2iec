@@ -168,6 +168,7 @@ ARCH_CFLAGS += -fno-inline-small-functions
 ARCH_CFLAGS += -fno-move-loop-invariants
 ARCH_CFLAGS += -fno-split-wide-types
 ARCH_CFLAGS += -flto
+ARCH_CFLAGS += -mstrict-X
 
 # turn these on to keep the functions in the same order as in the source
 # this is only useful if you're looking at disassembly
