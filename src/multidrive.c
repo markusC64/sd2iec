@@ -71,6 +71,7 @@
 #include "bus.h"
 #include "d64ops.h"
 #include "dirent.h"
+#include "diskchange.h"
 #include "doscmd.h"
 #include "errormsg.h"
 #include "eefs-ops.h"
@@ -1387,6 +1388,7 @@ static void close_slots(uint8_t dev, uint8_t slot) {
   free_multiple_buffers(FMB_DEV_USER_CLEAN);
   for (i = 0; i < md_slots; i++) {
     if (md_slot_dev[i] == dev && (slot == MD_NO_SLOT || slot == i)) {
+      change_forget(i);       // the slot may get another device
       if (partition[i].fop != &fatops)
         image_unmount(i);
       md_slot_dev[i] = MD_NO_DEVICE;
@@ -1406,6 +1408,7 @@ static void close_slots(uint8_t dev, uint8_t slot) {
 uint8_t md_reinit(uint8_t req) {
   uint8_t i;
 
+  change_forget(MD_NO_SLOT);  // the slots are set up anew
   free_multiple_buffers(FMB_USER_CLEAN);
   for (i = 0; i < (md_active ? md_slots : md_volumes); i++)
     if ((!md_active || md_slot_dev[i] != MD_NO_DEVICE) &&

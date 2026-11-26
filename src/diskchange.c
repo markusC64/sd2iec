@@ -396,3 +396,20 @@ void change_init(void) {
   memset(&swaplist,0,sizeof(swaplist));
   globalflagsInt &= (uint8_t)~AUTOSWAP_ACTIVE;
 }
+
+#ifdef CONFIG_MULTIDRIVE
+/**
+ * change_forget - drop the swap list of a drive
+ * @part: partition of the drive, MD_NO_SLOT for every drive
+ *
+ * Called when a slot of the pool is freed or the drives are set up
+ * anew: the slot may belong to another device later, and the buttons
+ * would then change its images.
+ */
+void change_forget(uint8_t part) {
+  if (swaplist.fs != NULL && (part == MD_NO_SLOT || part == swappath.part)) {
+    f_close(&swaplist);
+    change_init();
+  }
+}
+#endif

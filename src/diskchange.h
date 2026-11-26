@@ -28,6 +28,11 @@
 
 #include "dirent.h"
 
+#ifdef CONFIG_MULTIDRIVE
+/* drop the swap list if it is the one of partition part (MD_NO_SLOT: any) */
+void change_forget(uint8_t part);
+#endif
+
 void change_init(void);
 void change_disk(void);
 void set_changelist(path_t *path, uint8_t *filename);
