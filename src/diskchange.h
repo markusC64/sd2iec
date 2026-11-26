@@ -37,4 +37,11 @@ void change_init(void);
 void change_disk(void);
 void set_changelist(path_t *path, uint8_t *filename);
 
+#ifdef CONFIG_MULTIDRIVE
+/* non-zero if the swap list is the one of the current device */
+uint8_t change_own_list(void);
+#else
+#  define change_own_list() 1
+#endif
+
 #endif

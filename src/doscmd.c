@@ -838,7 +838,7 @@ void do_chdir(uint8_t *parsestr) {
 static void parse_chdir(void) {
   do_chdir(command_buffer + 2);
 
-  if (globalflagsInt & AUTOSWAP_ACTIVE)
+  if ((globalflagsInt & AUTOSWAP_ACTIVE) && change_own_list())
     set_changelist(NULL, NULLSTRING);
 }
 
@@ -1233,7 +1233,7 @@ static void parse_changepart(void) {
   }
 
   current_part = part;
-  if (globalflagsInt & AUTOSWAP_ACTIVE)
+  if ((globalflagsInt & AUTOSWAP_ACTIVE) && change_own_list())
     set_changelist(NULL, NULLSTRING);
 
   display_current_part(current_part);

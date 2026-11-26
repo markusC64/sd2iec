@@ -358,6 +358,19 @@ void set_changelist(path_t *path, uint8_t *filename) {
   set_changelist_internal(path, filename, 0);
 }
 
+#ifdef CONFIG_MULTIDRIVE
+/**
+ * change_own_list - check if the swap list belongs to the current device
+ *
+ * CD and CP end an automatic swap list, but only on the device whose
+ * drive it is for: another device has nothing to do with it.
+ */
+uint8_t change_own_list(void) {
+  return !md_active || swappath.part >= MD_MAX_SLOTS ||
+         md_slot_dev[swappath.part] == md_cur;
+}
+#endif
+
 void change_disk(void) {
   path_t path;
 
