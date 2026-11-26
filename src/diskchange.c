@@ -84,7 +84,7 @@ static void confirm_blink(uint8_t type) {
   }
 }
 
-static bool mount_line(void) {
+static bool mount_line_here(void) {
   FRESULT res;
   UINT bytesread;
   uint8_t *buffer_start;
@@ -100,8 +100,8 @@ static bool mount_line(void) {
 
   current_error = ERROR_OK;
 
-  /* Kill all buffers */
-  free_multiple_buffers(FMB_USER_CLEAN);
+  /* Kill all buffers of the device, the others keep their channels */
+  free_multiple_buffers(FMB_DEV_USER_CLEAN);
 
   /* allocate work area */
   buffer_t* readbuf = alloc_buffer();
@@ -221,6 +221,31 @@ static bool mount_line(void) {
   }
 
   return true;
+}
+
+/**
+ * mount_line - mount the image of the current line of the swap list
+ *
+ * The buttons work from the idle loop, where the current device is the
+ * one addressed last. With multiple devices the swap list belongs to
+ * the device of its drive, so that one is selected for the change: its
+ * current partition becomes the drive of the list, it gets the error
+ * message, and only its channels are closed.
+ */
+static bool mount_line(void) {
+#ifdef CONFIG_MULTIDRIVE
+  uint8_t prev = md_cur;
+  bool    ok;
+
+  if (md_active && swappath.part < MD_MAX_SLOTS &&
+      md_slot_dev[swappath.part] != MD_NO_DEVICE)
+    md_select(md_slot_dev[swappath.part]);
+  ok = mount_line_here();
+  md_select(prev);
+  return ok;
+#else
+  return mount_line_here();
+#endif
 }
 
 /**
