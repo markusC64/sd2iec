@@ -33,6 +33,8 @@
 #define DIR_OFS_TRACK           3
 #define DIR_OFS_SECTOR          4
 #define DIR_OFS_FILE_NAME       5
+#define DIR_OFS_SIDE_TRACK      0x15  /* REL: first (super) side sector */
+#define DIR_OFS_SIDE_SECTOR     0x16
 #define DIR_OFS_YEAR            0x19
 #define DIR_OFS_MONTH           0x1a
 #define DIR_OFS_DAY             0x1b

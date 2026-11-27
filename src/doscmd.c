@@ -1150,7 +1150,7 @@ static void parse_copy(void) {
       memset(&dent, 0, sizeof(dent));
       ustrncpy(dent.name, dstname, CBM_NAME_LENGTH);
       if (savedtype == TYPE_REL)
-        open_rel(&dstpath, &dent, dstbuf, srcbuf->recordlen, 1);
+        open_rel(&dstpath, &dent, dstbuf, srcbuf->recordlen, 0);
       else
         open_write(&dstpath, &dent, savedtype, dstbuf, 0);
 
@@ -1170,13 +1170,33 @@ static void parse_copy(void) {
 #endif
     }
 
-    while (1) {
-      uint8_t tocopy;
+    if (savedtype == TYPE_REL) {
+      /* Copy record by record until the source has no more records; */
+      /* several sources must have the same record length            */
+      if (srcbuf->recordlen != dstbuf->recordlen) {
+        set_error(ERROR_FILE_TYPE_MISMATCH);
+        goto cleanup;
+      }
+      while (1) {
+        uint8_t n = srcbuf->lastused - 1;   // without the trailing zeros
 
-      if (savedtype == TYPE_REL)
-        tocopy = srcbuf->recordlen;
-      else
-        tocopy = 256-dstbuf->position;
+        memcpy(dstbuf->data + 2, srcbuf->data + 2, n);
+        dstbuf->position = 2 + n;
+        dstbuf->lastused = 1 + n;
+        mark_buffer_dirty(dstbuf);
+        if (dstbuf->refill(dstbuf))
+          goto cleanup;
+
+        set_error(ERROR_OK);
+        if (srcbuf->refill(srcbuf))
+          goto cleanup;
+        if (current_error == ERROR_RECORD_MISSING) {
+          set_error(ERROR_OK);
+          break;
+        }
+      }
+    } else while (1) {
+      uint8_t tocopy = 256-dstbuf->position;
 
       if (tocopy > (srcbuf->lastused - srcbuf->position+1))
         tocopy = srcbuf->lastused - srcbuf->position + 1;
@@ -1197,11 +1217,11 @@ static void parse_copy(void) {
         break;
 
       /* Refill the buffers if required */
-      if (srcbuf->recordlen || srcbuf->position++ == srcbuf->lastused)
+      if (srcbuf->position++ == srcbuf->lastused)
         if (srcbuf->refill(srcbuf))
           goto cleanup;
 
-      if (dstbuf->recordlen || dstbuf->position == 0)
+      if (dstbuf->position == 0)
         if (dstbuf->refill(dstbuf))
           goto cleanup;
     }
