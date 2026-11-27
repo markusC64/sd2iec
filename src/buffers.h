@@ -125,6 +125,9 @@ typedef struct buffer_s {
 #endif
     } fat;
     d64fh_t d64;           /* File access on D64  */
+#ifdef CONFIG_D64_REL
+    d64relfh_t d64rel;     /* REL file access on D64 */
+#endif
 #ifdef CONFIG_CVT
     struct {
       uint8_t part;        /* partition of the image */
