@@ -210,8 +210,10 @@ Supported commands:
   You can use wildcards in the source names, but only the first
   file matching will be copied.
 
-  Copying REL files should work, but isn't tested well. Mixing REL and
-  non-REL files in an append operation isn't supported.
+  REL files are copied record by record. When several files are copied
+  into one REL file, all of them must be REL files with the same record
+  length (64,FILE TYPE MISMATCH otherwise). Appending REL files to a
+  file of another type isn't supported.
 
   With CVT support, CCVT[partition][path]:targetname=sourcename copies
   a file as a CVT: the source is read as if opened with ,V and the
@@ -1526,9 +1528,19 @@ REL files:
 ==========
 Partial REL file support is implemented. It should work fine for existing
 files, but creating new files and/or adding records to existing files
-may fail. REL files in disk images are not supported yet, only as files
-on a FAT medium. When x00 support is disabled the first byte of a REL
-file is assumed to be the record length.
+may fail. When x00 support is disabled the first byte of a REL file is
+assumed to be the record length.
+
+REL files in disk images are a build option: with CONFIG_D64_REL=y they
+can be created, read and written in all image types (D64, D71, D81,
+D80, D82, DNP). New files in D81, D82 and DNP images get a super side
+sector like on the 1581, the 8250 and in native partitions of the CMD
+drives, so they can grow until the image is full. In D64, D71 and D80
+images a new REL file holds at most 720 data blocks (52,FILE TOO
+LARGE), like on the 1541, the 1571 and an 8050 with DOS 2.5. An
+existing file is used the way it is, with or without a super side
+sector. Without the option REL files in images can't be opened, only
+scratched.
 
 Changing Disk Images
 ====================
